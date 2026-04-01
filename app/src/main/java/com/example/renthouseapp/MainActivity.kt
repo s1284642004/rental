@@ -1,8 +1,6 @@
 package com.example.renthouseapp
 
-
 import android.os.Bundle
-import android.util.Log // 修复：补上 Log 导入
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -16,34 +14,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.renthouseapp.model.Rental
 import com.example.renthouseapp.ui.theme.RentHouseAppTheme
-
-// 引用你写好的模型
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // 修正：调用正确的初始化方法名
-        CloudDBManager.init(this) {
-            Log.i("MainActivity", "云数据库初始化成功")
-        }
-
         enableEdgeToEdge()
         setContent {
             RentHouseAppTheme {
-                var isUnlocked by remember { mutableStateOf(false) }
-                if (!isUnlocked) {
-                    PasscodeScreen(onUnlockSuccess = { isUnlocked = true }) // 保留你的解锁逻辑
-                } else {
-                    RentHouseAppApp()
-                }
+                RentHouseAppApp()
             }
         }
     }
@@ -51,14 +39,22 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RentHouseAppApp() {
-    val rentalViewModel: RentalViewModel = viewModel()
-    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
-    var selectedRentalId by remember { mutableStateOf<String?>(null) }
+    // ======== 新增：系统解锁状态 ========
+    var isUnlocked by rememberSaveable { mutableStateOf(false) }
 
-    // 修复：明确类型转换，解决 find 报错
-    val selectedRental = selectedRentalId?.let { id ->
-        rentalViewModel.rentals.find { it.id == id }
+    // 如果没有解锁，强制全屏显示密码界面
+    if (!isUnlocked) {
+        PasscodeScreen(
+            onUnlockSuccess = { isUnlocked = true } // 密码正确后，将状态改为已解锁
+        )
+        return // 拦截：不往下执行加载主要数据的代码
     }
+
+    // ======== 下面是原来的系统主界面代码（解锁后才可见） ========
+    val rentalViewModel: RentalViewModel = viewModel()
+    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.ENTRY) }
+    var selectedRentalId by remember { mutableStateOf<String?>(null) }
+    val selectedRental = rentalViewModel.rentals.find { it.id == selectedRentalId }
 
     if (selectedRental != null) {
         RentalDetailScreen(
@@ -85,9 +81,7 @@ fun RentHouseAppApp() {
                         AppDestinations.ENTRY -> RentalEntryScreen(viewModel = rentalViewModel)
                         AppDestinations.LIST -> RentalListScreen(
                             viewModel = rentalViewModel,
-                            onRentalClick = { clickedRental ->
-                                selectedRentalId = clickedRental.id
-                            }
+                            onRentalClick = { clickedRental -> selectedRentalId = clickedRental.id }
                         )
                     }
                 }

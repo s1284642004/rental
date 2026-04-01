@@ -17,8 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-// 【关键修改】引入正确的本地模型
-import com.example.renthouseapp.model.Rental
 
 @Composable
 fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit) {
@@ -53,13 +51,14 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // 顶部 Tab 恢复纯净状态
         TabRow(selectedTabIndex = selectedTabIndex) {
             for (index in tabs.indices) {
                 Tab(selected = selectedTabIndex == index, onClick = { selectedTabIndex = index }, text = { Text(tabs[index]) })
             }
         }
 
-        // 你的一键同步按钮，原样保留
+        // 🌟 核心修改：在蓝色框线区域新增超大、超显眼的同步按钮
         Button(
             onClick = {
                 permissionLauncher.launch(
@@ -68,7 +67,7 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp), // 留出呼吸空间
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
             Icon(Icons.Default.DateRange, contentDescription = "同步", modifier = Modifier.padding(end = 8.dp))
@@ -91,7 +90,6 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit
     }
 }
 
-// 你的 RentalCard 逻辑，不做任何删减
 @Composable
 fun RentalCard(rental: Rental, onClick: () -> Unit) {
     val containerColor = if (rental.isCompleted) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
@@ -108,8 +106,8 @@ fun RentalCard(rental: Rental, onClick: () -> Unit) {
                 Text("该合同账单已全部结清", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodyMedium)
             } else {
                 Text("本次应缴金额: ￥${rental.totalAmount}", fontWeight = FontWeight.Bold)
-                // 注意：确保 viewModel 里的 logic 已经同步了这些 getter
-                Text("下次缴纳日期: ${rental.nextPaymentDate ?: "已完成"}")
+                Text("下次缴纳日期: ${rental.nextPaymentDate}")
+                Text("催款提醒日期: ${rental.reminderDate}", color = MaterialTheme.colorScheme.error)
             }
         }
     }

@@ -25,9 +25,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 import java.util.Calendar
-// 【精准适配】导入你 model 包下的核心类
-import com.example.renthouseapp.model.Rental
-import com.example.renthouseapp.model.PaymentRecord
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +37,7 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
     var editingPaymentId by remember { mutableStateOf<String?>(null) }
     var newAmountInput by remember { mutableStateOf("") }
 
-    // 收款表单状态 - 原封不动保留你的逻辑
+    // 收款表单状态
     var showReceiptDialog by remember { mutableStateOf(false) }
     var receiptPaymentId by remember { mutableStateOf<String?>(null) }
     var receiptPayee by remember { mutableStateOf("吴雪梅") }
@@ -57,7 +54,7 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
                 title = { Text("房源详情") },
                 navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
                 actions = {
-                    // 你的日历同步逻辑
+                    // 需求7：一键同步至日历按钮
                     IconButton(onClick = {
                         val nextPay = rental.paymentSchedule.firstOrNull { !it.isPaid }
                         val intent = Intent(Intent.ACTION_INSERT).apply {
@@ -66,9 +63,7 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
                             putExtra(CalendarContract.Events.DESCRIPTION, "租客：${rental.tenantName}\n电话：${rental.tenantPhone}")
                             putExtra(CalendarContract.Events.ALL_DAY, true)
                             nextPay?.let {
-                                val cal = Calendar.getInstance().apply {
-                                    set(it.reminderDate.year, it.reminderDate.monthValue - 1, it.reminderDate.dayOfMonth)
-                                }
+                                val cal = Calendar.getInstance().apply { set(it.reminderDate.year, it.reminderDate.monthValue - 1, it.reminderDate.dayOfMonth) }
                                 putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, cal.timeInMillis)
                             }
                         }
@@ -111,15 +106,16 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
             Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // 弹窗部分逻辑，完整保留
+        // ====== 需求2：确认收款详尽表单弹窗 ======
         if (showReceiptDialog && receiptPaymentId != null) {
             AlertDialog(
                 onDismissRequest = { showReceiptDialog = false },
                 title = { Text("确认收款明细") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("请确认收款信息入账...")
-                        // 提示：此处保留你原本自定义的 SingleChoiceDialogField 等调用
+                        SingleChoiceDialogField("收款人", listOf("吴雪梅", "罗琪琛", "吴应树", "王彦虎", "王一帆"), receiptPayee) { receiptPayee = it }
+                        SingleChoiceDialogField("收款方式", listOf("微信", "银行转账", "支付宝", "现金"), receiptMethod) { receiptMethod = it }
+                        NativeDatePickerField("实际收款日期", receiptDate) { receiptDate = it }
                     }
                 },
                 confirmButton = { Button(onClick = { viewModel.confirmPayment(rental.id, receiptPaymentId!!, receiptPayee, receiptMethod, receiptDate); showReceiptDialog = false }) { Text("确认入账") } },
@@ -127,13 +123,14 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
             )
         }
 
+        // 需求4：改价弹窗 (不再联动)
         if (showEditAmountDialog && editingPaymentId != null) {
             AlertDialog(
                 onDismissRequest = { showEditAmountDialog = false },
                 title = { Text("修改收款金额") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("仅修改当前期账单的金额，不影响其他期数。", style = MaterialTheme.typography.bodySmall)
+                        Text("仅修改当前期账单的金额，不影响其他期数。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         OutlinedTextField(value = newAmountInput, onValueChange = { newAmountInput = it }, label = { Text("新金额 (元)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                     }
                 },
@@ -151,7 +148,6 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
     }
 }
 
-// 此处保留你的 PaymentRecordCard 和 DetailRow，不做任何删减
 @Composable
 fun PaymentRecordCard(payment: PaymentRecord, propertyName: String, tenantName: String, onReceiptClick: () -> Unit, onRevokeClick: () -> Unit, onEditAmountClick: () -> Unit) {
     val context = LocalContext.current
@@ -167,6 +163,7 @@ fun PaymentRecordCard(payment: PaymentRecord, propertyName: String, tenantName: 
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
+            // 需求1：日期范围
             DetailRow("租期", "${payment.periodStartDate} 至 ${payment.periodEndDate}")
             DetailRow("应收金额", "￥${payment.amount}", isHighlight = !payment.isPaid, showEditIcon = !payment.isPaid, onEditClick = onEditAmountClick)
 
@@ -182,6 +179,7 @@ fun PaymentRecordCard(payment: PaymentRecord, propertyName: String, tenantName: 
                 if (!payment.isPaid) {
                     OutlinedButton(
                         onClick = {
+                            // 需求1：包含日期的短信模板
                             val msg = "你好 $tenantName，【$propertyName】（${payment.periodStartDate} 至 ${payment.periodEndDate}）的第${payment.periodNumber}期租金（￥${payment.amount}）将于 ${payment.dueDate} 到期，请按时缴纳，谢谢！"
                             clipboardManager.setText(AnnotatedString(msg))
                             Toast.makeText(context, "短信已复制", Toast.LENGTH_SHORT).show()

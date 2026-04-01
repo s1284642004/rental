@@ -1,136 +1,130 @@
 package com.example.renthouseapp
 
 import android.app.DatePickerDialog
+import android.widget.DatePicker
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-// 【精准对齐】引用 model 包下的 Rental，解决冲突
-import com.example.renthouseapp.model.Rental
-import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.*
+import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RentalEntryScreen(viewModel: RentalViewModel) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    // 你写好的所有状态变量，一个没少
-    var propertyName by remember { mutableStateOf("") }
+    var propertyName by remember { mutableStateOf(viewModel.availableProperties[0]) }
     var tenantName by remember { mutableStateOf("") }
     var tenantPhone by remember { mutableStateOf("") }
     var tenantIdCard by remember { mutableStateOf("") }
     var monthlyRent by remember { mutableStateOf("") }
-    var leaseMonths by remember { mutableStateOf("") }
-    var paymentFrequency by remember { mutableStateOf("") }
-
-    // 你的日期处理状态
-    var contractDate by remember { mutableStateOf(LocalDate.now()) }
+    var leaseMonths by remember { mutableStateOf("12") }
     var rentStartDate by remember { mutableStateOf(LocalDate.now()) }
-    val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    var contractDate by remember { mutableStateOf(LocalDate.now()) }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            // --- 你的原始 UI 布局逻辑 ---
-            OutlinedTextField(value = propertyName, onValueChange = { propertyName = it }, label = { Text("房屋名称") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(value = tenantName, onValueChange = { tenantName = it }, label = { Text("租客姓名") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(value = tenantPhone, onValueChange = { tenantPhone = it }, label = { Text("联系电话") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(value = tenantIdCard, onValueChange = { tenantIdCard = it }, label = { Text("身份证号/证件号") }, modifier = Modifier.fillMaxWidth())
+    // 需求5：交租方式，0代表一次性付清
+    val paymentOptions = listOf(1 to "每月一付", 3 to "季付(3个月)", 6 to "半年付", 12 to "年付", 0 to "一次性付清")
+    var selectedFreq by remember { mutableStateOf(paymentOptions[0]) }
 
-            Spacer(modifier = Modifier.height(16.dp))
+    var showSuccessDialog by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
 
-            // 你的日历处理逻辑：合同日期
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(text = "合同签订日期: ${contractDate.format(dateFormatter)}")
-                Button(onClick = {
-                    DatePickerDialog(context, { _, y, m, d ->
-                        contractDate = LocalDate.of(y, m + 1, d)
-                    }, contractDate.year, contractDate.monthValue - 1, contractDate.dayOfMonth).show()
-                }) { Text("选择日期") }
-            }
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("录入新房源", style = MaterialTheme.typography.headlineMedium)
 
-            Spacer(modifier = Modifier.height(8.dp))
+        // 需求8：统一采用单选弹窗
+        SingleChoiceDialogField(label = "选择房源 *", options = viewModel.availableProperties, selectedOption = propertyName, onOptionSelected = { propertyName = it })
 
-            // 你的日历处理逻辑：起租日期
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(text = "租期开始日期: ${rentStartDate.format(dateFormatter)}")
-                Button(onClick = {
-                    DatePickerDialog(context, { _, y, m, d ->
-                        rentStartDate = LocalDate.of(y, m + 1, d)
-                    }, rentStartDate.year, rentStartDate.monthValue - 1, rentStartDate.dayOfMonth).show()
-                }) { Text("选择日期") }
-            }
+        OutlinedTextField(value = tenantName, onValueChange = { tenantName = it }, label = { Text("租客姓名 *") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = tenantPhone, onValueChange = { tenantPhone = it }, label = { Text("手机号 (11位) *") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+        // 需求6：证件号非必输
+        OutlinedTextField(value = tenantIdCard, onValueChange = { tenantIdCard = it }, label = { Text("证件号码 (选填)") }, modifier = Modifier.fillMaxWidth())
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedTextField(value = monthlyRent, onValueChange = { monthlyRent = it }, label = { Text("月租金金额") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(value = leaseMonths, onValueChange = { leaseMonths = it }, label = { Text("租赁总月数") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(value = paymentFrequency, onValueChange = { paymentFrequency = it }, label = { Text("支付频率(几个月付一次，0为一次性)") }, modifier = Modifier.fillMaxWidth())
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = {
-                    // 你的校验逻辑，一行没删
-                    if (propertyName.isBlank() || tenantName.isBlank() || monthlyRent.isBlank() || leaseMonths.isBlank()) {
-                        scope.launch { snackbarHostState.showSnackbar("必填项不能为空！") }
-                        return@Button
-                    }
-
-                    try {
-                        // 【字段对齐点】补齐 model/Rental.kt 要求的全部 10 个字段
-                        val newRental = Rental(
-                            propertyName = propertyName,
-                            tenantName = tenantName,
-                            tenantPhone = tenantPhone,
-                            tenantIdCard = tenantIdCard,
-                            contractDate = contractDate,
-                            rentStartDate = rentStartDate,
-                            monthlyRent = monthlyRent.toInt(),
-                            leaseMonths = leaseMonths.toInt(),
-                            paymentFrequency = paymentFrequency.toIntOrNull() ?: 0
-                        )
-
-                        viewModel.addRental(newRental)
-
-                        // 你的成功提示逻辑
-                        scope.launch { snackbarHostState.showSnackbar("租约信息已成功同步至云端") }
-
-                        // 你的重置字段逻辑，全部保留
-                        propertyName = ""; tenantName = ""; tenantPhone = ""; tenantIdCard = ""
-                        monthlyRent = ""; leaseMonths = ""; paymentFrequency = ""
-                        contractDate = LocalDate.now()
-                        rentStartDate = LocalDate.now()
-
-                    } catch (e: Exception) {
-                        scope.launch { snackbarHostState.showSnackbar("保存失败：请检查数字输入格式") }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("确认并上传租约")
-            }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = monthlyRent, onValueChange = { monthlyRent = it }, label = { Text("月租金(元) *") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            OutlinedTextField(value = leaseMonths, onValueChange = { leaseMonths = it }, label = { Text("周期(月) *") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         }
+
+        NativeDatePickerField(label = "合同签订日期 *", selectedDate = contractDate, onDateSelected = { contractDate = it })
+        NativeDatePickerField(label = "租金起始日 *", selectedDate = rentStartDate, onDateSelected = { rentStartDate = it })
+
+        SingleChoiceDialogField(label = "交租方式 *", options = paymentOptions.map { it.second }, selectedOption = selectedFreq.second, onOptionSelected = { selectedName -> selectedFreq = paymentOptions.first { it.second == selectedName } })
+
+        Button(
+            onClick = {
+                val rentInt = monthlyRent.toIntOrNull()
+                val leaseInt = leaseMonths.toIntOrNull()
+
+                if (tenantName.isBlank() || rentInt == null || leaseInt == null) { errorMessage = "请完整填写必输项，且租金必须为数字"; return@Button }
+                if (!tenantPhone.matches(Regex("^\\d{11}$"))) { errorMessage = "手机号必须为11位数字"; return@Button }
+
+                val hasOngoingContract = viewModel.rentals.any { it.propertyName == propertyName && !it.isCompleted }
+                if (hasOngoingContract) { errorMessage = "录入拦截：房源【$propertyName】当前仍有未结清的合同！"; return@Button }
+
+                viewModel.addRental(Rental(
+                    propertyName = propertyName, tenantName = tenantName, tenantPhone = tenantPhone,
+                    tenantIdCard = tenantIdCard, contractDate = contractDate, rentStartDate = rentStartDate,
+                    monthlyRent = rentInt, leaseMonths = leaseInt, paymentFrequency = selectedFreq.first
+                ))
+                showSuccessDialog = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("确认并录入") }
+        Spacer(modifier = Modifier.height(20.dp))
+    }
+
+    if (errorMessage.isNotEmpty()) AlertDialog(onDismissRequest = { errorMessage = "" }, title = { Text("录入失败") }, text = { Text(errorMessage) }, confirmButton = { TextButton(onClick = { errorMessage = "" }) { Text("修改") } })
+    if (showSuccessDialog) AlertDialog(onDismissRequest = { }, title = { Text("提示") }, text = { Text("已成功录入！") }, confirmButton = { TextButton(onClick = { showSuccessDialog = false; tenantName = ""; tenantPhone = ""; tenantIdCard = ""; monthlyRent = "" }) { Text("确定") } })
+}
+
+// 提取的可复用组件：原生日期选择
+@Composable
+fun NativeDatePickerField(label: String, selectedDate: LocalDate, onDateSelected: (LocalDate) -> Unit) {
+    val context = LocalContext.current
+    val calendar = Calendar.getInstance().apply { set(selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth) }
+    val dialog = DatePickerDialog(context, { _: DatePicker, y: Int, m: Int, d: Int -> onDateSelected(LocalDate.of(y, m + 1, d)) }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+
+    Box(modifier = Modifier.fillMaxWidth().clickable { dialog.show() }) {
+        OutlinedTextField(value = selectedDate.toString(), onValueChange = {}, readOnly = true, label = { Text(label) }, trailingIcon = { Icon(Icons.Default.DateRange, "") }, enabled = false, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline, disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant))
+    }
+}
+
+// 提取的可复用组件：单选弹窗菜单
+@Composable
+fun SingleChoiceDialogField(label: String, options: List<String>, selectedOption: String, onOptionSelected: (String) -> Unit) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxWidth().clickable { showDialog = true }) {
+        OutlinedTextField(value = selectedOption, onValueChange = {}, readOnly = true, label = { Text(label) }, enabled = false, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline, disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant))
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("请选择 $label") },
+            text = {
+                LazyColumn {
+                    items(options) { option ->
+                        Row(modifier = Modifier.fillMaxWidth().clickable { onOptionSelected(option); showDialog = false }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = option == selectedOption, onClick = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(option)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showDialog = false }) { Text("取消") } }
+        )
     }
 }
