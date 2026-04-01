@@ -3,7 +3,6 @@ package com.example.renthouseapp.model
 import java.time.LocalDate
 import java.util.UUID
 
-// 你的原始账单逻辑，一行没删
 data class PaymentRecord(
     val id: String = UUID.randomUUID().toString(),
     val periodNumber: Int,
@@ -11,14 +10,13 @@ data class PaymentRecord(
     val periodStartDate: LocalDate,
     val periodEndDate: LocalDate,
     val dueDate: LocalDate,
-    val reminderDate: LocalDate,
+    val reminderDate: LocalDate, // 账单本身的提醒日期
     val isPaid: Boolean = false,
     val payee: String? = null,
     val paymentMethod: String? = null,
     val receiptDate: LocalDate? = null
 )
 
-// 你的完整租约逻辑，所有 11 个字段都在
 data class Rental(
     val id: String = UUID.randomUUID().toString(),
     val propertyName: String,
@@ -32,12 +30,20 @@ data class Rental(
     val paymentFrequency: Int,
     val paymentSchedule: List<PaymentRecord> = generateSchedule(rentStartDate, monthlyRent, leaseMonths, paymentFrequency)
 ) {
+    // 【修复报错点】补回 UI 需要的计算属性
     val totalAmount: Int get() = monthlyRent * paymentFrequency
-    val nextPaymentDate: LocalDate? get() = paymentSchedule.firstOrNull { !it.isPaid }?.dueDate
+
+    // 下次缴纳日期：找到第一笔未付账单的截止日期
+    val nextPaymentDate: LocalDate?
+        get() = paymentSchedule.firstOrNull { !it.isPaid }?.dueDate
+
+    // 整个合同的催款提醒日期：基于下次缴纳日期提前15天
+    val reminderDate: LocalDate?
+        get() = nextPaymentDate?.minusDays(15)
+
     val isCompleted: Boolean get() = paymentSchedule.isNotEmpty() && paymentSchedule.all { it.isPaid }
 
     companion object {
-        // 这是你之前写好的生成算法，原样搬回
         fun generateSchedule(start: LocalDate, rent: Int, months: Int, freq: Int): List<PaymentRecord> {
             val schedule = mutableListOf<PaymentRecord>()
             val actualFreq = if (freq == 0) months else freq
