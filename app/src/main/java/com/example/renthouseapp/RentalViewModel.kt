@@ -48,8 +48,10 @@ class RentalViewModel : ViewModel() {
     fun refreshAllData() {
         val repo = repository ?: return
         repo.queryAllProperties(onSuccess = { properties ->
-            if (properties.isEmpty()) {
-                seedLegacyProperties(repo)
+            val existingNames = properties.mapNotNull { it.propertyName }.toSet()
+            val missingNames = legacySeedPropertyNames.filterNot { it in existingNames }
+            if (missingNames.isNotEmpty()) {
+                seedLegacyProperties(repo, missingNames)
                 return@queryAllProperties
             }
 
@@ -228,8 +230,8 @@ class RentalViewModel : ViewModel() {
     }
 
 
-    private fun seedLegacyProperties(repo: CloudRentalRepository) {
-        val seedRecords = legacySeedPropertyNames.map { name ->
+    private fun seedLegacyProperties(repo: CloudRentalRepository, namesToSeed: List<String>) {
+        val seedRecords = namesToSeed.map { name ->
             Property().apply {
                 // 稳定ID，避免重复初始化时产生同名不同ID。
                 id = UUID.nameUUIDFromBytes(name.toByteArray(StandardCharsets.UTF_8)).toString()
