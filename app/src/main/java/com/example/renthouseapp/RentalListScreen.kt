@@ -19,7 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit) {
+fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Unit) {
     val rentals = viewModel.rentals
     val context = LocalContext.current
 
@@ -91,7 +91,7 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit
 }
 
 @Composable
-fun RentalCard(rental: Rental, onClick: () -> Unit) {
+fun RentalCard(rental: UiRental, onClick: () -> Unit) {
     val containerColor = if (rental.isCompleted) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     Card(modifier = Modifier.fillMaxWidth().clickable { onClick() }, colors = CardDefaults.cardColors(containerColor = containerColor), elevation = CardDefaults.cardElevation(if (rental.isCompleted) 0.dp else 4.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {

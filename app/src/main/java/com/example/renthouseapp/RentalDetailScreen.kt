@@ -28,7 +28,7 @@ import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: () -> Unit) {
+fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick: () -> Unit) {
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -149,7 +149,7 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
 }
 
 @Composable
-fun PaymentRecordCard(payment: PaymentRecord, propertyName: String, tenantName: String, onReceiptClick: () -> Unit, onRevokeClick: () -> Unit, onEditAmountClick: () -> Unit) {
+fun PaymentRecordCard(payment: UiPaymentRecord, propertyName: String, tenantName: String, onReceiptClick: () -> Unit, onRevokeClick: () -> Unit, onEditAmountClick: () -> Unit) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val containerColor = if (payment.isPaid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface

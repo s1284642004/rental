@@ -128,6 +128,49 @@ class CloudDbManager(private val context: Context) {
             .addOnFailureListener { e -> onError(e) }
     }
 
+    fun queryAllRentalRecords(
+        onSuccess: (List<RentalRecord>) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(RentalRecord::class.java)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val list = mutableListOf<RentalRecord>()
+                    val cursor = snapshot.snapshotObjects
+                    while (cursor.hasNext()) {
+                        cursor.next()?.let { list.add(it) }
+                    }
+                    cursor.close()
+                    snapshot.release()
+                    onSuccess(list)
+                } catch (e: Exception) {
+                    onError(e)
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun deleteRentalRecord(
+        record: RentalRecord,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeDelete(record)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
     fun insertOrUpdatePaymentRecord(
         record: PaymentRecord,
         onSuccess: (Int) -> Unit,
@@ -139,6 +182,78 @@ class CloudDbManager(private val context: Context) {
         }
 
         dbZone.executeUpsert(record)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun queryAllPaymentRecords(
+        onSuccess: (List<PaymentRecord>) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(PaymentRecord::class.java)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val list = mutableListOf<PaymentRecord>()
+                    val cursor = snapshot.snapshotObjects
+                    while (cursor.hasNext()) {
+                        cursor.next()?.let { list.add(it) }
+                    }
+                    cursor.close()
+                    snapshot.release()
+                    onSuccess(list)
+                } catch (e: Exception) {
+                    onError(e)
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun queryPaymentRecordsByRentalId(
+        rentalId: String,
+        onSuccess: (List<PaymentRecord>) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(PaymentRecord::class.java).equalTo("rentalId", rentalId)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val list = mutableListOf<PaymentRecord>()
+                    val cursor = snapshot.snapshotObjects
+                    while (cursor.hasNext()) {
+                        cursor.next()?.let { list.add(it) }
+                    }
+                    cursor.close()
+                    snapshot.release()
+                    onSuccess(list)
+                } catch (e: Exception) {
+                    onError(e)
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun deletePaymentRecord(
+        record: PaymentRecord,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeDelete(record)
             .addOnSuccessListener { count -> onSuccess(count) }
             .addOnFailureListener { e -> onError(e) }
     }

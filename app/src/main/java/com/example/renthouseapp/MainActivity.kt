@@ -20,6 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -52,6 +54,11 @@ fun RentHouseAppApp() {
 
     // ======== 下面是原来的系统主界面代码（解锁后才可见） ========
     val rentalViewModel: RentalViewModel = viewModel()
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        rentalViewModel.initialize(context)
+    }
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.ENTRY) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
     val selectedRental = rentalViewModel.rentals.find { it.id == selectedRentalId }

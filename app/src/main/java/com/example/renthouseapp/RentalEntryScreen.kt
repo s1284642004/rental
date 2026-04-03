@@ -24,7 +24,7 @@ import java.util.Calendar
 
 @Composable
 fun RentalEntryScreen(viewModel: RentalViewModel) {
-    var propertyName by remember { mutableStateOf(viewModel.availableProperties[0]) }
+    var propertyName by remember { mutableStateOf("") }
     var tenantName by remember { mutableStateOf("") }
     var tenantPhone by remember { mutableStateOf("") }
     var tenantIdCard by remember { mutableStateOf("") }
@@ -39,6 +39,12 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    LaunchedEffect(viewModel.availableProperties) {
+        if (propertyName.isBlank() && viewModel.availableProperties.isNotEmpty()) {
+            propertyName = viewModel.availableProperties.first()
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("录入新房源", style = MaterialTheme.typography.headlineMedium)
@@ -66,18 +72,19 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
                 val rentInt = monthlyRent.toIntOrNull()
                 val leaseInt = leaseMonths.toIntOrNull()
 
-                if (tenantName.isBlank() || rentInt == null || leaseInt == null) { errorMessage = "请完整填写必输项，且租金必须为数字"; return@Button }
+                if (tenantName.isBlank() || rentInt == null || leaseInt == null || propertyName.isBlank()) { errorMessage = "请完整填写必输项，且租金必须为数字"; return@Button }
                 if (!tenantPhone.matches(Regex("^\\d{11}$"))) { errorMessage = "手机号必须为11位数字"; return@Button }
 
                 val hasOngoingContract = viewModel.rentals.any { it.propertyName == propertyName && !it.isCompleted }
                 if (hasOngoingContract) { errorMessage = "录入拦截：房源【$propertyName】当前仍有未结清的合同！"; return@Button }
 
-                viewModel.addRental(Rental(
+                viewModel.addRental(
                     propertyName = propertyName, tenantName = tenantName, tenantPhone = tenantPhone,
                     tenantIdCard = tenantIdCard, contractDate = contractDate, rentStartDate = rentStartDate,
-                    monthlyRent = rentInt, leaseMonths = leaseInt, paymentFrequency = selectedFreq.first
-                ))
-                showSuccessDialog = true
+                    monthlyRent = rentInt, leaseMonths = leaseInt, paymentFrequency = selectedFreq.first,
+                    onSuccess = { showSuccessDialog = true },
+                    onError = { errorMessage = it }
+                )
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("确认并录入") }
