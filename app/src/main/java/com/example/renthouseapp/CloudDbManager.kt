@@ -25,6 +25,17 @@ class CloudDbManager(private val context: Context) {
         return Build.SUPPORTED_ABIS.any { abi -> abi.startsWith("arm") }
     }
 
+
+    private fun ensureCloudDbNativeLoaded() {
+        try {
+            System.loadLibrary("naturalbase_cloud_jni")
+        } catch (e: UnsatisfiedLinkError) {
+            // 某些设备/ROM自动加载失败时，手动加载一次native库。
+            Log.w(TAG, "manual load naturalbase_cloud_jni failed", e)
+            throw e
+        }
+    }
+
     fun init(
         onSuccess: () -> Unit,
         onError: (Throwable) -> Unit
@@ -38,6 +49,7 @@ class CloudDbManager(private val context: Context) {
 
         try {
             AGConnectCloudDB.initialize(context)
+            ensureCloudDbNativeLoaded()
             cloudDB.createObjectType(ObjectTypeInfoHelper.getObjectTypeInfo())
         } catch (t: Throwable) {
             Log.e(TAG, "Cloud DB init failed", t)
