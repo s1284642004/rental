@@ -144,11 +144,19 @@ class RentalViewModel : ViewModel() {
                     // 删除合同后房源可再次出租。
                     repo.queryAllProperties(onSuccess = { properties ->
                         val property = properties.firstOrNull { it.id == target.propertyId }
+                            ?: properties.firstOrNull { it.propertyName == target.propertyName }
+
                         if (property != null) {
                             property.isAvailable = true
                             repo.upsertProperty(property, onSuccess = { refreshAllData() }, onError = { initError = it.message })
                         } else {
-                            refreshAllData()
+                            // 兼容历史脏数据：若未找到对应Property，补写一条可用房源以确保合同删除后可再次录入。
+                            val fallback = Property().apply {
+                                id = if (target.propertyId.isNotBlank()) target.propertyId else UUID.randomUUID().toString()
+                                propertyName = target.propertyName
+                                isAvailable = true
+                            }
+                            repo.upsertProperty(fallback, onSuccess = { refreshAllData() }, onError = { initError = it.message })
                         }
                     }, onError = { initError = it.message })
                 }, onError = { initError = it.message })
