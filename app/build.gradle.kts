@@ -41,6 +41,7 @@ android {
 
 dependencies {
     implementation(libs.agconnect.core)
+    implementation(libs.agconnect.auth)
     implementation(libs.agconnect.cloud.database)
 
     implementation("androidx.compose.material3:material3:1.2.1")
