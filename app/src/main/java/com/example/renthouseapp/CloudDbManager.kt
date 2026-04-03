@@ -288,8 +288,10 @@ class CloudDbManager(private val context: Context) {
     }
 
     fun close() {
+        val dbZone = zone ?: return
         try {
-            zone?.close()
+            cloudDB.closeCloudDBZone(dbZone)
+            zone = null
         } catch (e: AGConnectCloudDBException) {
             Log.e(TAG, "close zone failed", e)
         }
