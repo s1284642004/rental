@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import java.time.LocalDate
-import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 import java.util.Date
 import java.util.UUID
@@ -26,11 +25,6 @@ class RentalViewModel : ViewModel() {
     private var repository: CloudRentalRepository? = null
     private var initialized = false
 
-    // 仅用于首次迁移入库：来源于历史代码中的硬编码房源名，UI不直接读取该常量。
-    private val legacySeedPropertyNames = listOf(
-        "簇锦家园201", "滨河苑30号", "南苑五星城904", "优博818",
-        "优博819", "诗锦苑1-1-204", "诗锦苑6-2-1103", "诗锦苑7-1-616", "诗锦苑1-1-1007"
-    )
 
     fun initialize(context: Context) {
         if (initialized) return
@@ -48,13 +42,6 @@ class RentalViewModel : ViewModel() {
     fun refreshAllData() {
         val repo = repository ?: return
         repo.queryAllProperties(onSuccess = { properties ->
-            val existingNames = properties.mapNotNull { it.propertyName }.toSet()
-            val missingNames = legacySeedPropertyNames.filterNot { it in existingNames }
-            if (missingNames.isNotEmpty()) {
-                seedLegacyProperties(repo, missingNames)
-                return@queryAllProperties
-            }
-
             _availableProperties.clear()
             _availableProperties.addAll(properties.filter { it.isAvailable != false }.mapNotNull { it.propertyName }.sorted())
 
@@ -229,34 +216,6 @@ class RentalViewModel : ViewModel() {
         repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
     }
 
-
-    private fun seedLegacyProperties(repo: CloudRentalRepository, namesToSeed: List<String>) {
-        val seedRecords = namesToSeed.map { name ->
-            Property().apply {
-                // 稳定ID，避免重复初始化时产生同名不同ID。
-                id = UUID.nameUUIDFromBytes(name.toByteArray(StandardCharsets.UTF_8)).toString()
-                propertyName = name
-                isAvailable = true
-            }
-        }
-        upsertSeedProperties(repo, seedRecords, 0)
-    }
-
-    private fun upsertSeedProperties(
-        repo: CloudRentalRepository,
-        properties: List<Property>,
-        index: Int
-    ) {
-        if (index >= properties.size) {
-            refreshAllData()
-            return
-        }
-        repo.upsertProperty(properties[index], onSuccess = {
-            upsertSeedProperties(repo, properties, index + 1)
-        }, onError = {
-            initError = it.message ?: "初始化房源迁移失败"
-        })
-    }
 
     private fun ensureProperty(
         propertyName: String,
