@@ -2,6 +2,7 @@ package com.example.renthouseapp
 
 import android.content.Context
 import android.util.Log
+import android.os.Build
 import com.huawei.agconnect.auth.AGConnectAuth
 import com.huawei.agconnect.cloud.database.AGConnectCloudDB
 import com.huawei.agconnect.cloud.database.CloudDBZone
@@ -19,10 +20,22 @@ class CloudDbManager(private val context: Context) {
     private val cloudDB by lazy { AGConnectCloudDB.getInstance() }
     private var zone: CloudDBZone? = null
 
+
+    private fun isCloudDbAbiSupported(): Boolean {
+        return Build.SUPPORTED_ABIS.any { abi -> abi.startsWith("arm") }
+    }
+
     fun init(
         onSuccess: () -> Unit,
         onError: (Throwable) -> Unit
     ) {
+        if (!isCloudDbAbiSupported()) {
+            val message = "Cloud DB native库当前仅支持ARM ABI，请在ARM真机/ARM模拟器运行。当前ABI=${Build.SUPPORTED_ABIS.joinToString()}"
+            Log.e(TAG, message)
+            onError(IllegalStateException(message))
+            return
+        }
+
         try {
             AGConnectCloudDB.initialize(context)
             cloudDB.createObjectType(ObjectTypeInfoHelper.getObjectTypeInfo())

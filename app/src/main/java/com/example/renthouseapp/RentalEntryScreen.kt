@@ -48,6 +48,7 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("录入新房源", style = MaterialTheme.typography.headlineMedium)
+        viewModel.initError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
         // 需求8：统一采用单选弹窗
         SingleChoiceDialogField(label = "选择房源 *", options = viewModel.availableProperties, selectedOption = propertyName, onOptionSelected = { propertyName = it })
@@ -72,6 +73,7 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
                 val rentInt = monthlyRent.toIntOrNull()
                 val leaseInt = leaseMonths.toIntOrNull()
 
+                if (viewModel.availableProperties.isEmpty()) { errorMessage = viewModel.initError ?: "暂无可用房源，请先确认 Cloud DB 初始化"; return@Button }
                 if (tenantName.isBlank() || rentInt == null || leaseInt == null || propertyName.isBlank()) { errorMessage = "请完整填写必输项，且租金必须为数字"; return@Button }
                 if (!tenantPhone.matches(Regex("^\\d{11}$"))) { errorMessage = "手机号必须为11位数字"; return@Button }
 
