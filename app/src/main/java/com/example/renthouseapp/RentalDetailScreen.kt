@@ -12,6 +12,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +51,15 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
     var editPhone by remember { mutableStateOf("") }
     var editIdCard by remember { mutableStateOf("") }
 
+    var isRefreshing by remember { mutableStateOf(false) }
+    val pullRefreshState = rememberPullRefreshState(refreshing = isRefreshing, onRefresh = {
+        isRefreshing = true
+        viewModel.refreshAllData()
+    })
+    LaunchedEffect(viewModel.rentals.size) {
+        if (isRefreshing) isRefreshing = false
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -75,7 +87,8 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             )
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize().pullRefresh(pullRefreshState)) {
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -104,6 +117,13 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        PullRefreshIndicator(
+            refreshing = isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
         }
 
         // ====== 需求2：确认收款详尽表单弹窗 ======

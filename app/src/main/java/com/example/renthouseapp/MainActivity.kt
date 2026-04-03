@@ -3,6 +3,7 @@ package com.example.renthouseapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,9 +60,17 @@ fun RentHouseAppApp() {
     LaunchedEffect(Unit) {
         rentalViewModel.initialize(context)
     }
-    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.ENTRY) }
+    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
     val selectedRental = rentalViewModel.rentals.find { it.id == selectedRentalId }
+
+    BackHandler(enabled = selectedRentalId != null || currentDestination != AppDestinations.LIST) {
+        if (selectedRentalId != null) {
+            selectedRentalId = null
+        } else {
+            currentDestination = AppDestinations.LIST
+        }
+    }
 
     if (selectedRental != null) {
         RentalDetailScreen(

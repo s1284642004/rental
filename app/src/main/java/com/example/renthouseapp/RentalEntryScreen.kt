@@ -11,6 +11,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,13 +42,21 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    val pullRefreshState = rememberPullRefreshState(refreshing = isRefreshing, onRefresh = {
+        isRefreshing = true
+        viewModel.refreshAllData()
+    })
 
     LaunchedEffect(viewModel.availableProperties) {
         if (propertyName.isBlank() && viewModel.availableProperties.isNotEmpty()) {
             propertyName = viewModel.availableProperties.first()
         }
+        if (isRefreshing) isRefreshing = false
     }
 
+    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("录入新房源", style = MaterialTheme.typography.headlineMedium)
         viewModel.initError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -91,6 +102,13 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) { Text("确认并录入") }
         Spacer(modifier = Modifier.height(20.dp))
+    }
+
+    PullRefreshIndicator(
+        refreshing = isRefreshing,
+        state = pullRefreshState,
+        modifier = Modifier.align(Alignment.TopCenter)
+    )
     }
 
     if (errorMessage.isNotEmpty()) AlertDialog(onDismissRequest = { errorMessage = "" }, title = { Text("录入失败") }, text = { Text(errorMessage) }, confirmButton = { TextButton(onClick = { errorMessage = "" }) { Text("修改") } })
