@@ -26,8 +26,9 @@ class CloudDbManager(private val context: Context) {
         try {
             AGConnectCloudDB.initialize(context)
             cloudDB.createObjectType(ObjectTypeInfoHelper.getObjectTypeInfo())
-        } catch (e: Exception) {
-            onError(e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Cloud DB init failed", t)
+            onError(t)
             return
         }
 
