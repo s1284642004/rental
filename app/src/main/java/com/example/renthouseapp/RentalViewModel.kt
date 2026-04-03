@@ -40,7 +40,14 @@ class RentalViewModel : ViewModel() {
     }
 
     fun refreshAllData() {
-        val repo = repository ?: return
+        refreshAllDataWithCallback(onSuccess = {}, onError = {})
+    }
+
+    fun refreshAllDataWithCallback(
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val repo = repository ?: return onError("Cloud DB 尚未初始化")
         repo.queryAllProperties(onSuccess = { properties ->
             _availableProperties.clear()
             _availableProperties.addAll(properties.filter { it.isAvailable != false }.mapNotNull { it.propertyName }.sorted())
@@ -56,9 +63,19 @@ class RentalViewModel : ViewModel() {
                     }
                     _rentals.clear()
                     _rentals.addAll(uiList)
-                }, onError = { initError = it.message })
-            }, onError = { initError = it.message })
-        }, onError = { initError = it.message })
+                    onSuccess()
+                }, onError = {
+                    initError = it.message
+                    onError(it.message ?: "支付记录获取失败")
+                })
+            }, onError = {
+                initError = it.message
+                onError(it.message ?: "租约获取失败")
+            })
+        }, onError = {
+            initError = it.message
+            onError(it.message ?: "房源获取失败")
+        })
     }
 
     fun addRental(

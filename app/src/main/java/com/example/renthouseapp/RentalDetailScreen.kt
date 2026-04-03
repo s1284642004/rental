@@ -28,6 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
@@ -53,13 +56,36 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
     var editIdCard by remember { mutableStateOf("") }
 
     var isRefreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var refreshTimeoutJob by remember { mutableStateOf<Job?>(null) }
     val pullRefreshState = rememberPullRefreshState(refreshing = isRefreshing, onRefresh = {
+        if (isRefreshing) return@rememberPullRefreshState
         isRefreshing = true
-        viewModel.refreshAllData()
+        refreshTimeoutJob?.cancel()
+        refreshTimeoutJob = scope.launch {
+            delay(10_000)
+            if (isRefreshing) {
+                isRefreshing = false
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+        viewModel.refreshAllDataWithCallback(
+            onSuccess = {
+                if (isRefreshing) {
+                    isRefreshing = false
+                    Toast.makeText(context, "数据刷新成功", Toast.LENGTH_SHORT).show()
+                }
+                refreshTimeoutJob?.cancel()
+            },
+            onError = {
+                if (isRefreshing) {
+                    isRefreshing = false
+                    Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+                }
+                refreshTimeoutJob?.cancel()
+            }
+        )
     })
-    LaunchedEffect(viewModel.rentals.size) {
-        if (isRefreshing) isRefreshing = false
-    }
 
     Scaffold(
         topBar = {

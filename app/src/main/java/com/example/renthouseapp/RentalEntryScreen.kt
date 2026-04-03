@@ -1,6 +1,7 @@
 package com.example.renthouseapp
 
 import android.app.DatePickerDialog
+import android.widget.Toast
 import android.widget.DatePicker
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,6 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -45,17 +49,43 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var isRefreshing by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var refreshTimeoutJob by remember { mutableStateOf<Job?>(null) }
 
     val pullRefreshState = rememberPullRefreshState(refreshing = isRefreshing, onRefresh = {
+        if (isRefreshing) return@rememberPullRefreshState
         isRefreshing = true
-        viewModel.refreshAllData()
+        refreshTimeoutJob?.cancel()
+        refreshTimeoutJob = scope.launch {
+            delay(10_000)
+            if (isRefreshing) {
+                isRefreshing = false
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+        viewModel.refreshAllDataWithCallback(
+            onSuccess = {
+                if (isRefreshing) {
+                    isRefreshing = false
+                    Toast.makeText(context, "数据刷新成功", Toast.LENGTH_SHORT).show()
+                }
+                refreshTimeoutJob?.cancel()
+            },
+            onError = {
+                if (isRefreshing) {
+                    isRefreshing = false
+                    Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+                }
+                refreshTimeoutJob?.cancel()
+            }
+        )
     })
 
     LaunchedEffect(viewModel.availableProperties) {
         if (propertyName.isBlank() && viewModel.availableProperties.isNotEmpty()) {
             propertyName = viewModel.availableProperties.first()
         }
-        if (isRefreshing) isRefreshing = false
     }
 
     Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {

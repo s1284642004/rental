@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -36,14 +38,35 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
     val scope = rememberCoroutineScope()
 
     var isRefreshing by remember { mutableStateOf(false) }
+    var refreshTimeoutJob by remember { mutableStateOf<Job?>(null) }
     val pullRefreshState = rememberPullRefreshState(refreshing = isRefreshing, onRefresh = {
+        if (isRefreshing) return@rememberPullRefreshState
         isRefreshing = true
-        viewModel.refreshAllData()
+        refreshTimeoutJob?.cancel()
+        refreshTimeoutJob = scope.launch {
+            delay(10_000)
+            if (isRefreshing) {
+                isRefreshing = false
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+        viewModel.refreshAllDataWithCallback(
+            onSuccess = {
+                if (isRefreshing) {
+                    isRefreshing = false
+                    Toast.makeText(context, "数据刷新成功", Toast.LENGTH_SHORT).show()
+                }
+                refreshTimeoutJob?.cancel()
+            },
+            onError = {
+                if (isRefreshing) {
+                    isRefreshing = false
+                    Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+                }
+                refreshTimeoutJob?.cancel()
+            }
+        )
     })
-
-    LaunchedEffect(rentals.size) {
-        if (isRefreshing) isRefreshing = false
-    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
