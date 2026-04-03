@@ -102,11 +102,11 @@ class CloudDbManager(private val context: Context) {
                 while (cursor.hasNext()) {
                     cursor.next()?.let { list.add(it) }
                 }
-                cursor.close()
-                snapshot.release()
                 onSuccess(list)
             } catch (e: Exception) {
                 onError(e)
+            } finally {
+                snapshot.release()
             }
         }.addOnFailureListener { e ->
             onError(e)
@@ -146,11 +146,11 @@ class CloudDbManager(private val context: Context) {
                     while (cursor.hasNext()) {
                         cursor.next()?.let { list.add(it) }
                     }
-                    cursor.close()
-                    snapshot.release()
                     onSuccess(list)
                 } catch (e: Exception) {
                     onError(e)
+                } finally {
+                    snapshot.release()
                 }
             }
             .addOnFailureListener { e -> onError(e) }
@@ -204,11 +204,11 @@ class CloudDbManager(private val context: Context) {
                     while (cursor.hasNext()) {
                         cursor.next()?.let { list.add(it) }
                     }
-                    cursor.close()
-                    snapshot.release()
                     onSuccess(list)
                 } catch (e: Exception) {
                     onError(e)
+                } finally {
+                    snapshot.release()
                 }
             }
             .addOnFailureListener { e -> onError(e) }
@@ -233,11 +233,11 @@ class CloudDbManager(private val context: Context) {
                     while (cursor.hasNext()) {
                         cursor.next()?.let { list.add(it) }
                     }
-                    cursor.close()
-                    snapshot.release()
                     onSuccess(list)
                 } catch (e: Exception) {
                     onError(e)
+                } finally {
+                    snapshot.release()
                 }
             }
             .addOnFailureListener { e -> onError(e) }
