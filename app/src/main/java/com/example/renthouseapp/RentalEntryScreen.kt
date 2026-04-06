@@ -25,9 +25,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -48,36 +45,15 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
-    var isRefreshing by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var refreshTimeoutJob by remember { mutableStateOf<Job?>(null) }
 
-    val pullRefreshState = rememberPullRefreshState(refreshing = isRefreshing, onRefresh = {
-        if (isRefreshing) return@rememberPullRefreshState
-        isRefreshing = true
-        refreshTimeoutJob?.cancel()
-        refreshTimeoutJob = scope.launch {
-            delay(10_000)
-            if (isRefreshing) {
-                isRefreshing = false
-                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
-            }
-        }
-        viewModel.refreshAllDataWithCallback(
-            onSuccess = {
-                if (isRefreshing) {
-                    isRefreshing = false
-                    Toast.makeText(context, "数据刷新成功", Toast.LENGTH_SHORT).show()
-                }
-                refreshTimeoutJob?.cancel()
+    val pullRefreshState = rememberPullRefreshState(refreshing = viewModel.isRefreshing, onRefresh = {
+        viewModel.refreshFromUser(
+            onSuccess = { isEmpty ->
+                Toast.makeText(context, if (isEmpty) "暂无数据" else "数据刷新成功", Toast.LENGTH_SHORT).show()
             },
             onError = {
-                if (isRefreshing) {
-                    isRefreshing = false
-                    Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
-                }
-                refreshTimeoutJob?.cancel()
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
             }
         )
     })
@@ -89,6 +65,11 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
     }
 
     Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+    if (viewModel.isInitialLoading && viewModel.availableProperties.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("录入新房源", style = MaterialTheme.typography.headlineMedium)
         viewModel.initError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -135,9 +116,10 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
         ) { Text("确认并录入") }
         Spacer(modifier = Modifier.height(20.dp))
     }
+    }
 
     PullRefreshIndicator(
-        refreshing = isRefreshing,
+        refreshing = viewModel.isRefreshing,
         state = pullRefreshState,
         modifier = Modifier.align(Alignment.TopCenter)
     )

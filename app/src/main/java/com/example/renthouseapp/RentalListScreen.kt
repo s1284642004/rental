@@ -23,8 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -37,33 +35,13 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { tabs.size })
     val scope = rememberCoroutineScope()
 
-    var isRefreshing by remember { mutableStateOf(false) }
-    var refreshTimeoutJob by remember { mutableStateOf<Job?>(null) }
-    val pullRefreshState = rememberPullRefreshState(refreshing = isRefreshing, onRefresh = {
-        if (isRefreshing) return@rememberPullRefreshState
-        isRefreshing = true
-        refreshTimeoutJob?.cancel()
-        refreshTimeoutJob = scope.launch {
-            delay(10_000)
-            if (isRefreshing) {
-                isRefreshing = false
-                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
-            }
-        }
-        viewModel.refreshAllDataWithCallback(
-            onSuccess = {
-                if (isRefreshing) {
-                    isRefreshing = false
-                    Toast.makeText(context, "数据刷新成功", Toast.LENGTH_SHORT).show()
-                }
-                refreshTimeoutJob?.cancel()
+    val pullRefreshState = rememberPullRefreshState(refreshing = viewModel.isRefreshing, onRefresh = {
+        viewModel.refreshFromUser(
+            onSuccess = { isEmpty ->
+                Toast.makeText(context, if (isEmpty) "暂无数据" else "数据刷新成功", Toast.LENGTH_SHORT).show()
             },
             onError = {
-                if (isRefreshing) {
-                    isRefreshing = false
-                    Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
-                }
-                refreshTimeoutJob?.cancel()
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
             }
         )
     })
@@ -113,6 +91,11 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
                 Text("一键同步至日历", fontWeight = FontWeight.Bold)
             }
 
+            if (viewModel.isInitialLoading && rentals.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val displayRentals = when (page) {
                     1 -> rentals.filter { !it.isCompleted }
@@ -134,10 +117,11 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
                     }
                 }
             }
+            }
         }
 
         PullRefreshIndicator(
-            refreshing = isRefreshing,
+            refreshing = viewModel.isRefreshing,
             state = pullRefreshState,
             modifier = Modifier.align(Alignment.TopCenter)
         )

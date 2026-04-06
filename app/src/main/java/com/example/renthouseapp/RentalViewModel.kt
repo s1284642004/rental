@@ -21,9 +21,22 @@ class RentalViewModel : ViewModel() {
     var initError by mutableStateOf<String?>(null)
         private set
 
+    var isInitialLoading by mutableStateOf(true)
+        private set
+
+    var isRefreshing by mutableStateOf(false)
+        private set
+
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    val isEmpty: Boolean
+        get() = rentals.isEmpty()
+
     private var cloudDbManager: CloudDbManager? = null
     private var repository: CloudRentalRepository? = null
     private var initialized = false
+    private var latestLoadRequestId = 0
 
 
     fun initialize(context: Context) {
@@ -34,20 +47,66 @@ class RentalViewModel : ViewModel() {
         repository = CloudRentalRepository(cloudDbManager!!)
 
         cloudDbManager?.init(
-            onSuccess = { refreshAllData() },
-            onError = { initError = it.message ?: "Cloud DB 初始化失败" }
+            onSuccess = { loadData(userRefresh = false, onSuccess = {}, onError = {}) },
+            onError = {
+                val msg = it.message ?: "Cloud DB 初始化失败"
+                initError = msg
+                errorMessage = msg
+                isInitialLoading = false
+                isRefreshing = false
+            }
         )
     }
 
     fun refreshAllData() {
-        refreshAllDataWithCallback(onSuccess = {}, onError = {})
+        loadData(userRefresh = false, onSuccess = {}, onError = {})
     }
 
-    fun refreshAllDataWithCallback(
-        onSuccess: () -> Unit,
+    fun refreshFromUser(
+        onSuccess: (Boolean) -> Unit,
         onError: (String) -> Unit
     ) {
-        val repo = repository ?: return onError("Cloud DB 尚未初始化")
+        loadData(userRefresh = true, onSuccess = onSuccess, onError = onError)
+    }
+
+    private fun loadData(
+        userRefresh: Boolean,
+        onSuccess: (Boolean) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val repo = repository ?: run {
+            val msg = "Cloud DB 尚未初始化"
+            errorMessage = msg
+            isInitialLoading = false
+            isRefreshing = false
+            onError(msg)
+            return
+        }
+
+        val requestId = ++latestLoadRequestId
+        if (userRefresh) {
+            // 用户主动刷新只显示顶部刷新态，不清空当前内容。
+            isRefreshing = true
+        } else {
+            isInitialLoading = rentals.isEmpty()
+        }
+
+        fun finishSuccess(isEmptyResult: Boolean) {
+            if (requestId != latestLoadRequestId) return
+            isInitialLoading = false
+            isRefreshing = false
+            errorMessage = null
+            onSuccess(isEmptyResult)
+        }
+
+        fun finishError(message: String) {
+            if (requestId != latestLoadRequestId) return
+            isInitialLoading = false
+            isRefreshing = false
+            errorMessage = message
+            onError(message)
+        }
+
         repo.queryAllProperties(onSuccess = { properties ->
             _availableProperties.clear()
             _availableProperties.addAll(properties.filter { it.isAvailable != false }.mapNotNull { it.propertyName }.sorted())
@@ -63,18 +122,21 @@ class RentalViewModel : ViewModel() {
                     }
                     _rentals.clear()
                     _rentals.addAll(uiList)
-                    onSuccess()
+                    finishSuccess(uiList.isEmpty())
                 }, onError = {
-                    initError = it.message
-                    onError(it.message ?: "支付记录获取失败")
+                    val msg = it.message ?: "支付记录获取失败"
+                    initError = msg
+                    finishError(msg)
                 })
             }, onError = {
-                initError = it.message
-                onError(it.message ?: "租约获取失败")
+                val msg = it.message ?: "租约获取失败"
+                initError = msg
+                finishError(msg)
             })
         }, onError = {
-            initError = it.message
-            onError(it.message ?: "房源获取失败")
+            val msg = it.message ?: "房源获取失败"
+            initError = msg
+            finishError(msg)
         })
     }
 
