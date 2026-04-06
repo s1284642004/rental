@@ -144,8 +144,8 @@ fun RentalCard(rental: UiRental, onClick: () -> Unit) {
                 Text("该合同账单已全部结清", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodyMedium)
             } else {
                 Text("本次应缴金额: ￥${rental.totalAmount}", fontWeight = FontWeight.Bold)
-                Text("下次缴纳日期: ${rental.nextPaymentDate}")
-                Text("催款提醒日期: ${rental.reminderDate}", color = MaterialTheme.colorScheme.error)
+                Text("下次缴纳日期: ${rental.nextPaymentDate ?: "合同已完结"}")
+                Text("催款提醒日期: ${rental.reminderDate ?: "无"}", color = MaterialTheme.colorScheme.error)
             }
         }
     }

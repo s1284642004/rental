@@ -273,34 +273,38 @@ class RentalViewModel : ViewModel() {
         repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { payments ->
             val payment = payments.firstOrNull { it.id == paymentId } ?: return@queryPaymentRecordsByRentalId
             mutate(payment)
-            repo.upsertPaymentRecord(payment, onSuccess = { _ ->
-                refreshAllData()
-                syncRentalCompletion(rentalId)
+            repo.upsertPaymentRecord(payment, onSuccess = {
+                syncRentalCompletionFromCloud(rentalId)
             }, onError = { initError = it.message })
         }, onError = { initError = it.message })
     }
 
-    private fun syncRentalCompletion(rentalId: String) {
+    private fun syncRentalCompletionFromCloud(rentalId: String) {
         val repo = repository ?: return
-        val rental = _rentals.firstOrNull { it.id == rentalId } ?: return
-        val shouldCompleted = rental.paymentSchedule.isNotEmpty() && rental.paymentSchedule.all { it.isPaid }
-        if (rental.isCompleted == shouldCompleted) return
+        repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { cloudPayments ->
+            val shouldCompleted = cloudPayments.isNotEmpty() && cloudPayments.all { it.isPaid == true }
+            val rental = _rentals.firstOrNull { it.id == rentalId } ?: return@queryPaymentRecordsByRentalId
+            if (rental.isCompleted == shouldCompleted) {
+                refreshAllData()
+                return@queryPaymentRecordsByRentalId
+            }
 
-        val record = RentalRecord().apply {
-            id = rental.id
-            propertyId = rental.propertyId
-            propertyName = rental.propertyName
-            tenantName = rental.tenantName
-            tenantPhone = rental.tenantPhone
-            tenantIdCard = rental.tenantIdCard
-            contractDate = rental.contractDate.toDate()
-            rentStartDate = rental.rentStartDate.toDate()
-            monthlyRent = rental.monthlyRent
-            leaseMonths = rental.leaseMonths
-            paymentFrequency = rental.paymentFrequency
-            isCompleted = shouldCompleted
-        }
-        repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
+            val record = RentalRecord().apply {
+                id = rental.id
+                propertyId = rental.propertyId
+                propertyName = rental.propertyName
+                tenantName = rental.tenantName
+                tenantPhone = rental.tenantPhone
+                tenantIdCard = rental.tenantIdCard
+                contractDate = rental.contractDate.toDate()
+                rentStartDate = rental.rentStartDate.toDate()
+                monthlyRent = rental.monthlyRent
+                leaseMonths = rental.leaseMonths
+                paymentFrequency = rental.paymentFrequency
+                isCompleted = shouldCompleted
+            }
+            repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
+        }, onError = { initError = it.message })
     }
 
 
