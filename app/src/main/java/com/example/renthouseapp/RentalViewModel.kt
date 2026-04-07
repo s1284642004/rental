@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import java.time.LocalDate
-import java.time.OffsetDateTime
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
@@ -39,7 +39,7 @@ class RentalViewModel : ViewModel() {
     private var repository: CloudRentalRepository? = null
     private var initialized = false
     private var latestLoadRequestId = 0
-    private var currentLoginUser = "unknown"
+    private var currentLoginPhone = "unknown"
 
 
     fun initialize(context: Context) {
@@ -66,13 +66,14 @@ class RentalViewModel : ViewModel() {
     }
 
     fun setLoginUser(loginName: String, phoneNumber: String) {
-        val normalized = loginName.trim().ifBlank { "unknown" }
-        currentLoginUser = normalized
+        val normalizedName = loginName.trim().ifBlank { "unknown" }
+        val normalizedPhone = phoneNumber.trim().ifBlank { "unknown" }
+        currentLoginPhone = normalizedPhone
         val repo = repository ?: return
         val loginUser = LoginUser().apply {
-            id = normalized
-            this.loginName = normalized
-            this.phoneNumber = phoneNumber.trim().ifBlank { null }
+            id = if (normalizedPhone == "unknown") normalizedName else normalizedPhone
+            this.loginName = normalizedName
+            this.phoneNumber = normalizedPhone
         }
         repo.upsertLoginUser(loginUser, onSuccess = {}, onError = {})
     }
@@ -247,24 +248,15 @@ class RentalViewModel : ViewModel() {
 
     fun updateTenantInfo(rentalId: String, newName: String, newPhone: String, newIdCard: String) {
         val repo = repository ?: return
-        val target = _rentals.firstOrNull { it.id == rentalId } ?: return
-        val record = RentalRecord().apply {
-            id = target.id
-            propertyId = target.propertyId
-            propertyName = target.propertyName
-            tenantName = newName
-            tenantPhone = newPhone
-            tenantIdCard = newIdCard
-            contractDate = target.contractDate.toDate()
-            rentStartDate = target.rentStartDate.toDate()
-            monthlyRent = target.monthlyRent
-            leaseMonths = target.leaseMonths
-            paymentFrequency = target.paymentFrequency
-            isCompleted = target.isCompleted
-            updatedBy = currentOperator()
-            updatedAt = nowIso()
-        }
-        repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
+        repo.queryAllRentalRecords(onSuccess = { records ->
+            val record = records.firstOrNull { it.id == rentalId } ?: return@queryAllRentalRecords
+            record.tenantName = newName
+            record.tenantPhone = newPhone
+            record.tenantIdCard = newIdCard
+            record.updatedBy = currentOperator()
+            record.updatedAt = nowIso()
+            repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
+        }, onError = { initError = it.message })
     }
 
     fun updatePaymentAmount(rentalId: String, paymentId: String, newAmount: Int) {
@@ -306,29 +298,17 @@ class RentalViewModel : ViewModel() {
         val repo = repository ?: return
         repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { cloudPayments ->
             val shouldCompleted = cloudPayments.isNotEmpty() && cloudPayments.all { it.isPaid == true }
-            val rental = _rentals.firstOrNull { it.id == rentalId } ?: return@queryPaymentRecordsByRentalId
-            if (rental.isCompleted == shouldCompleted) {
-                refreshAllData()
-                return@queryPaymentRecordsByRentalId
-            }
-
-            val record = RentalRecord().apply {
-                id = rental.id
-                propertyId = rental.propertyId
-                propertyName = rental.propertyName
-                tenantName = rental.tenantName
-                tenantPhone = rental.tenantPhone
-                tenantIdCard = rental.tenantIdCard
-                contractDate = rental.contractDate.toDate()
-                rentStartDate = rental.rentStartDate.toDate()
-                monthlyRent = rental.monthlyRent
-                leaseMonths = rental.leaseMonths
-                paymentFrequency = rental.paymentFrequency
-                isCompleted = shouldCompleted
-                updatedBy = currentOperator()
-                updatedAt = nowIso()
-            }
-            repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
+            repo.queryAllRentalRecords(onSuccess = { records ->
+                val record = records.firstOrNull { it.id == rentalId } ?: return@queryAllRentalRecords
+                if (record.isCompleted == shouldCompleted) {
+                    refreshAllData()
+                    return@queryAllRentalRecords
+                }
+                record.isCompleted = shouldCompleted
+                record.updatedBy = currentOperator()
+                record.updatedAt = nowIso()
+                repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
+            }, onError = { initError = it.message })
         }, onError = { initError = it.message })
     }
 
@@ -467,6 +447,6 @@ class RentalViewModel : ViewModel() {
 
     private fun LocalDate.toDate(): Date = Date.from(atStartOfDay(ZoneId.systemDefault()).toInstant())
     private fun Date.toLocalDate(): LocalDate = toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
-    private fun nowIso(): String = OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-    private fun currentOperator(): String = currentLoginUser.ifBlank { "unknown" }
+    private fun nowIso(): String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+    private fun currentOperator(): String = currentLoginPhone.ifBlank { "unknown" }
 }

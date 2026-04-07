@@ -60,6 +60,9 @@ fun RentHouseAppApp() {
     val rentalViewModel: RentalViewModel = viewModel()
     val loginName = loginContext?.loginName.orEmpty()
     val loginPhone = loginContext?.phoneNumber.orEmpty()
+    val maskedPhone = loginPhone.let { phone ->
+        if (phone.length == 11) "${phone.take(3)}****${phone.takeLast(4)}" else phone
+    }
 
     LaunchedEffect(Unit, loginName, loginPhone) {
         rentalViewModel.initialize(context)
@@ -109,7 +112,7 @@ fun RentHouseAppApp() {
             }
             if (loginName.isNotBlank()) {
                 Text(
-                    text = "当前登录：$loginName",
+                    text = if (maskedPhone.isNotBlank()) "当前登录：$loginName（$maskedPhone）" else "当前登录：$loginName",
                     modifier = Modifier.padding(12.dp)
                 )
             }
