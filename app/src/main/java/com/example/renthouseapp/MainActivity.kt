@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,23 +43,28 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RentHouseAppApp() {
-    // ======== 新增：系统解锁状态 ========
-    var isUnlocked by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val sessionStore = remember { LoginSessionStore(context) }
+    var currentLogin by rememberSaveable {
+        mutableStateOf(sessionStore.get() ?: LoginSession(loginName = "", phoneNumber = ""))
+    }
+    var isUnlocked by rememberSaveable { mutableStateOf(currentLogin.phoneNumber.isNotBlank()) }
 
-    // 如果没有解锁，强制全屏显示密码界面
     if (!isUnlocked) {
         PasscodeScreen(
-            onUnlockSuccess = { isUnlocked = true } // 密码正确后，将状态改为已解锁
+            onLoginSuccess = { loginName, phoneNumber ->
+                val session = LoginSession(loginName, phoneNumber)
+                sessionStore.save(session)
+                currentLogin = session
+                isUnlocked = true
+            }
         )
-        return // 拦截：不往下执行加载主要数据的代码
+        return
     }
-
-    // ======== 下面是原来的系统主界面代码（解锁后才可见） ========
     val rentalViewModel: RentalViewModel = viewModel()
-    val context = LocalContext.current
 
-    LaunchedEffect(Unit) {
-        rentalViewModel.initialize(context)
+    LaunchedEffect(currentLogin.phoneNumber) {
+        rentalViewModel.initialize(context, currentLogin)
     }
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
@@ -91,7 +97,16 @@ fun RentHouseAppApp() {
                 }
             }
         ) {
-            Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Text("当前登录：${currentLogin.loginName}（${currentLogin.phoneNumber.maskPhone()}）")
+                        }
+                    )
+                }
+            ) { innerPadding ->
                 Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                     when (currentDestination) {
                         AppDestinations.ENTRY -> RentalEntryScreen(viewModel = rentalViewModel)
@@ -104,6 +119,11 @@ fun RentHouseAppApp() {
             }
         }
     }
+}
+
+private fun String.maskPhone(): String {
+    if (length < 7) return this
+    return replaceRange(3, 7, "****")
 }
 
 enum class AppDestinations(val label: String, val icon: ImageVector) {

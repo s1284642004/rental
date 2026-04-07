@@ -17,6 +17,10 @@ class CloudRentalRepository(private val cloudDbManager: CloudDbManager) {
         cloudDbManager.deleteProperty(property, onSuccess, onError)
     }
 
+    fun upsertLoginUser(loginUser: LoginUser, onSuccess: (Int) -> Unit, onError: (Throwable) -> Unit) {
+        cloudDbManager.insertOrUpdateLoginUser(loginUser, onSuccess, onError)
+    }
+
     fun upsertRentalRecord(record: RentalRecord, onSuccess: (Int) -> Unit, onError: (Throwable) -> Unit) {
         cloudDbManager.insertOrUpdateRentalRecord(record, onSuccess, onError)
     }

@@ -45,11 +45,11 @@ public final class PaymentRecord extends CloudDBZoneObject {
 
     private String createdBy;
 
-    private Date createdAt;
+    private String createdAt;
 
     private String updatedBy;
 
-    private Date updatedAt;
+    private String updatedAt;
 
     public PaymentRecord() {
         super(PaymentRecord.class);
@@ -160,11 +160,11 @@ public final class PaymentRecord extends CloudDBZoneObject {
         return createdBy;
     }
 
-    public void setCreatedAt(Date createdAt) {
+    public void setCreatedAt(String createdAt) {
         this.createdAt = createdAt;
     }
 
-    public Date getCreatedAt() {
+    public String getCreatedAt() {
         return createdAt;
     }
 
@@ -176,11 +176,11 @@ public final class PaymentRecord extends CloudDBZoneObject {
         return updatedBy;
     }
 
-    public void setUpdatedAt(Date updatedAt) {
+    public void setUpdatedAt(String updatedAt) {
         this.updatedAt = updatedAt;
     }
 
-    public Date getUpdatedAt() {
+    public String getUpdatedAt() {
         return updatedAt;
     }
 

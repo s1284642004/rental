@@ -27,7 +27,10 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
-fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Unit) {
+fun RentalListScreen(
+    viewModel: RentalViewModel,
+    onRentalClick: (UiRental) -> Unit
+) {
     val rentals = viewModel.rentals
     val context = LocalContext.current
 

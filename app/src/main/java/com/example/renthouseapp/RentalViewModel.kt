@@ -7,7 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.UUID
 
@@ -37,17 +39,25 @@ class RentalViewModel : ViewModel() {
     private var repository: CloudRentalRepository? = null
     private var initialized = false
     private var latestLoadRequestId = 0
+    private var currentLogin: LoginSession = LoginSession(loginName = "", phoneNumber = "")
 
 
-    fun initialize(context: Context) {
-        if (initialized) return
+    fun initialize(context: Context, loginSession: LoginSession) {
+        currentLogin = loginSession
+        if (initialized) {
+            syncLoginUser()
+            return
+        }
         initialized = true
 
         cloudDbManager = CloudDbManager(context.applicationContext)
         repository = CloudRentalRepository(cloudDbManager!!)
 
         cloudDbManager?.init(
-            onSuccess = { loadData(userRefresh = false, onSuccess = {}, onError = {}) },
+            onSuccess = {
+                syncLoginUser()
+                loadData(userRefresh = false, onSuccess = {}, onError = {})
+            },
             onError = {
                 val msg = it.message ?: "Cloud DB 初始化失败"
                 initError = msg
@@ -172,6 +182,7 @@ class RentalViewModel : ViewModel() {
                     this.paymentFrequency = paymentFrequency
                     isCompleted = false
                 }
+                applyCreateAudit(rental)
 
                 repo.upsertRentalRecord(rental, onSuccess = {
                     val schedules = generateSchedule(rentalId, rentStartDate, monthlyRent, leaseMonths, paymentFrequency)
@@ -242,7 +253,10 @@ class RentalViewModel : ViewModel() {
             leaseMonths = target.leaseMonths
             paymentFrequency = target.paymentFrequency
             isCompleted = target.isCompleted
+            createdBy = target.createdBy
+            createdAt = target.createdAt
         }
+        applyUpdateAudit(record)
         repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
     }
 
@@ -273,6 +287,14 @@ class RentalViewModel : ViewModel() {
         repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { payments ->
             val payment = payments.firstOrNull { it.id == paymentId } ?: return@queryPaymentRecordsByRentalId
             mutate(payment)
+            if (payment.createdBy.isNullOrBlank()) {
+                payment.createdBy = currentActorPhone()
+            }
+            if (payment.createdAt.isNullOrBlank()) {
+                payment.createdAt = nowString()
+            }
+            payment.updatedBy = currentActorPhone()
+            payment.updatedAt = nowString()
             repo.upsertPaymentRecord(payment, onSuccess = {
                 syncRentalCompletionFromCloud(rentalId)
             }, onError = { initError = it.message })
@@ -302,7 +324,10 @@ class RentalViewModel : ViewModel() {
                 leaseMonths = rental.leaseMonths
                 paymentFrequency = rental.paymentFrequency
                 isCompleted = shouldCompleted
+                createdBy = rental.createdBy
+                createdAt = rental.createdAt
             }
+            applyUpdateAudit(record)
             repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
         }, onError = { initError = it.message })
     }
@@ -397,6 +422,7 @@ class RentalViewModel : ViewModel() {
                     isPaid = false
                 }
             )
+            applyCreateAudit(schedule.last())
         }
         return schedule
     }
@@ -415,6 +441,10 @@ class RentalViewModel : ViewModel() {
             leaseMonths = leaseMonths ?: 0,
             paymentFrequency = paymentFrequency ?: 0,
             isCompleted = isCompleted == true,
+            createdBy = createdBy ?: "unknown",
+            createdAt = createdAt ?: "",
+            updatedBy = updatedBy ?: "unknown",
+            updatedAt = updatedAt ?: "",
             paymentSchedule = payments
         )
     }
@@ -438,4 +468,53 @@ class RentalViewModel : ViewModel() {
 
     private fun LocalDate.toDate(): Date = Date.from(atStartOfDay(ZoneId.systemDefault()).toInstant())
     private fun Date.toLocalDate(): LocalDate = toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+
+    private fun applyCreateAudit(record: RentalRecord) {
+        val actor = currentActorPhone()
+        val now = nowString()
+        record.createdBy = actor
+        record.createdAt = now
+        record.updatedBy = actor
+        record.updatedAt = now
+    }
+
+    private fun applyUpdateAudit(record: RentalRecord) {
+        val actor = currentActorPhone()
+        record.updatedBy = actor
+        record.updatedAt = nowString()
+        if (record.createdBy.isNullOrBlank()) {
+            record.createdBy = actor
+        }
+        if (record.createdAt.isNullOrBlank()) {
+            record.createdAt = nowString()
+        }
+    }
+
+    private fun applyCreateAudit(record: PaymentRecord) {
+        val actor = currentActorPhone()
+        val now = nowString()
+        record.createdBy = actor
+        record.createdAt = now
+        record.updatedBy = actor
+        record.updatedAt = now
+    }
+
+    private fun currentActorPhone(): String = currentLogin.phoneNumber.ifBlank { "unknown" }
+
+    private fun nowString(): String = LocalDateTime.now().format(DATE_FORMATTER)
+
+    private fun syncLoginUser() {
+        val repo = repository ?: return
+        if (currentLogin.loginName.isBlank() || currentLogin.phoneNumber.isBlank()) return
+        val loginUser = LoginUser().apply {
+            id = currentLogin.phoneNumber
+            loginName = currentLogin.loginName
+            phoneNumber = currentLogin.phoneNumber
+        }
+        repo.upsertLoginUser(loginUser, onSuccess = {}, onError = { initError = it.message })
+    }
+
+    companion object {
+        private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    }
 }
