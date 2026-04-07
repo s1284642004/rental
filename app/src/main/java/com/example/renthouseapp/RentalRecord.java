@@ -15,7 +15,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType RentalRecord.
  *
- * @since 2026-04-03
+ * @since 2026-04-07
  */
 @PrimaryKeys({"id"})
 public final class RentalRecord extends CloudDBZoneObject {
@@ -45,6 +45,14 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     @DefaultValue(booleanValue = false)
     private Boolean isCompleted;
+
+    private String createdBy;
+
+    private Date createdAt;
+
+    private String updatedBy;
+
+    private Date updatedAt;
 
     public RentalRecord() {
         super(RentalRecord.class);
@@ -146,6 +154,38 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     public Boolean getIsCompleted() {
         return isCompleted;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedAt(Date createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Date getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public String getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedAt(Date updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Date getUpdatedAt() {
+        return updatedAt;
     }
 
 }
