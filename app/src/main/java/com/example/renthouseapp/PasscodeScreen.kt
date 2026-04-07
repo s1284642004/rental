@@ -1,93 +1,85 @@
 package com.example.renthouseapp
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun PasscodeScreen(onUnlockSuccess: () -> Unit) {
-    // 状态管理
-    var passcode by remember { mutableStateOf("") }
-    var isError by remember { mutableStateOf(false) }
+fun PasscodeScreen(onUnlockSuccess: (String, String) -> Unit) {
+    var loginName by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
 
-    // 正确的专属密码
-    val correctPasscode = "740506"
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
+            modifier = Modifier.fillMaxSize().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = "安全锁",
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = "收租管家",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = "请输入 6 位专属访问密码",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
-            )
+            Text("登录 RentHouse", style = MaterialTheme.typography.headlineSmall)
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
-                value = passcode,
-                onValueChange = { input ->
-                    // 限制只能输入6位数字
-                    if (input.length <= 6 && input.all { it.isDigit() }) {
-                        passcode = input
-                        isError = false // 重新输入时清除错误状态
-
-                        // 当输入满 6 位时，自动校验
-                        if (input.length == 6) {
-                            if (input == correctPasscode) {
-                                onUnlockSuccess() // 密码正确，触发解锁回调
-                            } else {
-                                isError = true // 密码错误，变红提示
-                            }
-                        }
-                    }
+                value = loginName,
+                onValueChange = {
+                    loginName = it
+                    error = ""
                 },
-                isError = isError,
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), // 变成小黑点
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                textStyle = LocalTextStyle.current.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
-                modifier = Modifier.fillMaxWidth(0.8f)
+                label = { Text("登录人姓名") },
+                modifier = Modifier.fillMaxWidth()
             )
 
-            if (isError) {
-                Text(
-                    text = "密码错误，请重新输入",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = phoneNumber,
+                onValueChange = {
+                    phoneNumber = it
+                    error = ""
+                },
+                label = { Text("手机号") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (error.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(error, color = MaterialTheme.colorScheme.error)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(onClick = {
+                if (loginName.isBlank() || phoneNumber.isBlank()) {
+                    error = "请填写姓名和手机号"
+                    return@Button
+                }
+                if (!phoneNumber.matches(Regex("^\\d{11}$"))) {
+                    error = "手机号需为11位数字"
+                    return@Button
+                }
+                onUnlockSuccess(loginName.trim(), phoneNumber.trim())
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("登录")
             }
         }
     }

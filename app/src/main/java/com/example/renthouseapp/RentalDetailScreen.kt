@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,9 +30,9 @@ import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
-fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: () -> Unit) {
+fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick: () -> Unit) {
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -47,6 +51,17 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
     var editName by remember { mutableStateOf("") }
     var editPhone by remember { mutableStateOf("") }
     var editIdCard by remember { mutableStateOf("") }
+
+    val pullRefreshState = rememberPullRefreshState(refreshing = viewModel.isRefreshing, onRefresh = {
+        viewModel.refreshFromUser(
+            onSuccess = { isEmpty ->
+                Toast.makeText(context, if (isEmpty) "暂无数据" else "数据刷新成功", Toast.LENGTH_SHORT).show()
+            },
+            onError = {
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+            }
+        )
+    })
 
     Scaffold(
         topBar = {
@@ -75,7 +90,8 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
             )
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize().pullRefresh(pullRefreshState)) {
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(2.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -104,6 +120,13 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        PullRefreshIndicator(
+            refreshing = viewModel.isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
         }
 
         // ====== 需求2：确认收款详尽表单弹窗 ======
@@ -149,7 +172,7 @@ fun RentalDetailScreen(rental: Rental, viewModel: RentalViewModel, onBackClick: 
 }
 
 @Composable
-fun PaymentRecordCard(payment: PaymentRecord, propertyName: String, tenantName: String, onReceiptClick: () -> Unit, onRevokeClick: () -> Unit, onEditAmountClick: () -> Unit) {
+fun PaymentRecordCard(payment: UiPaymentRecord, propertyName: String, tenantName: String, onReceiptClick: () -> Unit, onRevokeClick: () -> Unit, onEditAmountClick: () -> Unit) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val containerColor = if (payment.isPaid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface

@@ -8,7 +8,10 @@ espressoCore = "3.5.1"
 lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
 composeBom = "2025.12.00"
-agcVersion = "1.9.5.302"
+agcpVersion = "1.9.5.302"
+agconnectCoreVersion = "1.9.5.302"
+agconnectAuthVersion = "1.9.5.302"
+agconnectCloudDbVersion = "1.5.0.300"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -28,8 +31,9 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material3-adaptive-navigation-suite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite" }
 
-agconnect-core = { module = "com.huawei.agconnect:agconnect-core", version.ref = "agcVersion" }
-agconnect-cloud-database = { module = "com.huawei.agconnect:agconnect-cloud-database", version.ref = "agcVersion" }
+agconnect-core = { module = "com.huawei.agconnect:agconnect-core", version.ref = "agconnectCoreVersion" }
+agconnect-auth = { module = "com.huawei.agconnect:agconnect-auth", version.ref = "agconnectAuthVersion" }
+agconnect-cloud-database = { module = "com.huawei.agconnect:agconnect-cloud-database", version.ref = "agconnectCloudDbVersion" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

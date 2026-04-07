@@ -8,8 +8,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,20 +23,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
-fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit) {
+fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Unit) {
     val rentals = viewModel.rentals
     val context = LocalContext.current
 
-    var selectedTabIndex by remember { mutableIntStateOf(1) }
     val tabs = listOf("全部", "进行中", "已完成")
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { tabs.size })
+    val scope = rememberCoroutineScope()
 
-    val displayRentals = when (selectedTabIndex) {
-        1 -> rentals.filter { !it.isCompleted }
-        2 -> rentals.filter { it.isCompleted }
-        else -> rentals
-    }
+    val pullRefreshState = rememberPullRefreshState(refreshing = viewModel.isRefreshing, onRefresh = {
+        viewModel.refreshFromUser(
+            onSuccess = { isEmpty ->
+                Toast.makeText(context, if (isEmpty) "暂无数据" else "数据刷新成功", Toast.LENGTH_SHORT).show()
+            },
+            onError = {
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+            }
+        )
+    })
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -50,48 +64,72 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (Rental) -> Unit
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // 顶部 Tab 恢复纯净状态
-        TabRow(selectedTabIndex = selectedTabIndex) {
-            for (index in tabs.indices) {
-                Tab(selected = selectedTabIndex == index, onClick = { selectedTabIndex = index }, text = { Text(tabs[index]) })
+    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            TabRow(selectedTabIndex = pagerState.currentPage) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                        text = { Text(title) }
+                    )
+                }
             }
-        }
 
-        // 🌟 核心修改：在蓝色框线区域新增超大、超显眼的同步按钮
-        Button(
-            onClick = {
-                permissionLauncher.launch(
-                    arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
-                )
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp), // 留出呼吸空间
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-        ) {
-            Icon(Icons.Default.DateRange, contentDescription = "同步", modifier = Modifier.padding(end = 8.dp))
-            Text("一键同步至日历", fontWeight = FontWeight.Bold)
-        }
-
-        if (displayRentals.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (rentals.isEmpty()) "目前还没有房源信息，快去录入吧！" else "该分类下暂无数据")
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Button(
+                onClick = {
+                    permissionLauncher.launch(
+                        arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
-                items(displayRentals) { rental -> RentalCard(rental = rental, onClick = { onRentalClick(rental) }) }
+                Icon(Icons.Default.DateRange, contentDescription = "同步", modifier = Modifier.padding(end = 8.dp))
+                Text("一键同步至日历", fontWeight = FontWeight.Bold)
+            }
+
+            if (viewModel.isInitialLoading && rentals.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                val displayRentals = when (page) {
+                    1 -> rentals.filter { !it.isCompleted }
+                    2 -> rentals.filter { it.isCompleted }
+                    else -> rentals
+                }
+
+                if (displayRentals.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(if (rentals.isEmpty()) "目前还没有房源信息，下拉刷新后再试" else "该分类下暂无数据")
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(displayRentals) { rental -> RentalCard(rental = rental, onClick = { onRentalClick(rental) }) }
+                    }
+                }
+            }
             }
         }
+
+        PullRefreshIndicator(
+            refreshing = viewModel.isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
 
 @Composable
-fun RentalCard(rental: Rental, onClick: () -> Unit) {
+fun RentalCard(rental: UiRental, onClick: () -> Unit) {
     val containerColor = if (rental.isCompleted) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     Card(modifier = Modifier.fillMaxWidth().clickable { onClick() }, colors = CardDefaults.cardColors(containerColor = containerColor), elevation = CardDefaults.cardElevation(if (rental.isCompleted) 0.dp else 4.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -106,8 +144,8 @@ fun RentalCard(rental: Rental, onClick: () -> Unit) {
                 Text("该合同账单已全部结清", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodyMedium)
             } else {
                 Text("本次应缴金额: ￥${rental.totalAmount}", fontWeight = FontWeight.Bold)
-                Text("下次缴纳日期: ${rental.nextPaymentDate}")
-                Text("催款提醒日期: ${rental.reminderDate}", color = MaterialTheme.colorScheme.error)
+                Text("下次缴纳日期: ${rental.nextPaymentDate ?: "合同已完结"}")
+                Text("催款提醒日期: ${rental.reminderDate ?: "无"}", color = MaterialTheme.colorScheme.error)
             }
         }
     }

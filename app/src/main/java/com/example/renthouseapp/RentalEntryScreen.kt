@@ -1,6 +1,7 @@
 package com.example.renthouseapp
 
 import android.app.DatePickerDialog
+import android.widget.Toast
 import android.widget.DatePicker
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,8 +10,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,9 +27,10 @@ import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 import java.util.Calendar
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun RentalEntryScreen(viewModel: RentalViewModel) {
-    var propertyName by remember { mutableStateOf(viewModel.availableProperties[0]) }
+    var propertyName by remember { mutableStateOf("") }
     var tenantName by remember { mutableStateOf("") }
     var tenantPhone by remember { mutableStateOf("") }
     var tenantIdCard by remember { mutableStateOf("") }
@@ -39,9 +45,34 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
+    val pullRefreshState = rememberPullRefreshState(refreshing = viewModel.isRefreshing, onRefresh = {
+        viewModel.refreshFromUser(
+            onSuccess = { isEmpty ->
+                Toast.makeText(context, if (isEmpty) "暂无数据" else "数据刷新成功", Toast.LENGTH_SHORT).show()
+            },
+            onError = {
+                Toast.makeText(context, "数据获取失败", Toast.LENGTH_SHORT).show()
+            }
+        )
+    })
+
+    LaunchedEffect(viewModel.availableProperties) {
+        if (propertyName.isBlank() && viewModel.availableProperties.isNotEmpty()) {
+            propertyName = viewModel.availableProperties.first()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+    if (viewModel.isInitialLoading && viewModel.availableProperties.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("录入新房源", style = MaterialTheme.typography.headlineMedium)
+        viewModel.initError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
         // 需求8：统一采用单选弹窗
         SingleChoiceDialogField(label = "选择房源 *", options = viewModel.availableProperties, selectedOption = propertyName, onOptionSelected = { propertyName = it })
@@ -66,22 +97,32 @@ fun RentalEntryScreen(viewModel: RentalViewModel) {
                 val rentInt = monthlyRent.toIntOrNull()
                 val leaseInt = leaseMonths.toIntOrNull()
 
-                if (tenantName.isBlank() || rentInt == null || leaseInt == null) { errorMessage = "请完整填写必输项，且租金必须为数字"; return@Button }
+                if (viewModel.availableProperties.isEmpty()) { errorMessage = viewModel.initError ?: "暂无可用房源，请先确认 Cloud DB 初始化"; return@Button }
+                if (tenantName.isBlank() || rentInt == null || leaseInt == null || propertyName.isBlank()) { errorMessage = "请完整填写必输项，且租金必须为数字"; return@Button }
                 if (!tenantPhone.matches(Regex("^\\d{11}$"))) { errorMessage = "手机号必须为11位数字"; return@Button }
 
                 val hasOngoingContract = viewModel.rentals.any { it.propertyName == propertyName && !it.isCompleted }
                 if (hasOngoingContract) { errorMessage = "录入拦截：房源【$propertyName】当前仍有未结清的合同！"; return@Button }
 
-                viewModel.addRental(Rental(
+                viewModel.addRental(
                     propertyName = propertyName, tenantName = tenantName, tenantPhone = tenantPhone,
                     tenantIdCard = tenantIdCard, contractDate = contractDate, rentStartDate = rentStartDate,
-                    monthlyRent = rentInt, leaseMonths = leaseInt, paymentFrequency = selectedFreq.first
-                ))
-                showSuccessDialog = true
+                    monthlyRent = rentInt, leaseMonths = leaseInt, paymentFrequency = selectedFreq.first,
+                    onSuccess = { showSuccessDialog = true },
+                    onError = { errorMessage = it }
+                )
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("确认并录入") }
         Spacer(modifier = Modifier.height(20.dp))
+    }
+    }
+
+    PullRefreshIndicator(
+        refreshing = viewModel.isRefreshing,
+        state = pullRefreshState,
+        modifier = Modifier.align(Alignment.TopCenter)
+    )
     }
 
     if (errorMessage.isNotEmpty()) AlertDialog(onDismissRequest = { errorMessage = "" }, title = { Text("录入失败") }, text = { Text(errorMessage) }, confirmButton = { TextButton(onClick = { errorMessage = "" }) { Text("修改") } })

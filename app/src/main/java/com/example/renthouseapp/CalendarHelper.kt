@@ -8,7 +8,7 @@ import java.util.TimeZone
 
 object CalendarHelper {
 
-    fun syncAllUnpaidToCalendar(context: Context, rentals: List<Rental>): Int {
+    fun syncAllUnpaidToCalendar(context: Context, rentals: List<UiRental>): Int {
         val calendarId = getDefaultCalendarId(context) ?: return -1
 
         clearOldRentEvents(context, calendarId)

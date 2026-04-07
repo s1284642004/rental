@@ -46,6 +46,14 @@ public final class RentalRecord extends CloudDBZoneObject {
     @DefaultValue(booleanValue = false)
     private Boolean isCompleted;
 
+    private String createdBy;
+
+    private String createdAt;
+
+    private String updatedBy;
+
+    private String updatedAt;
+
     public RentalRecord() {
         super(RentalRecord.class);
         this.tenantPhone = "";
@@ -146,6 +154,38 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     public Boolean getIsCompleted() {
         return isCompleted;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedAt(String createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public String getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedAt(String updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public String getUpdatedAt() {
+        return updatedAt;
     }
 
 }

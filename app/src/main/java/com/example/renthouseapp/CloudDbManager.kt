@@ -2,6 +2,7 @@ package com.example.renthouseapp
 
 import android.content.Context
 import android.util.Log
+import android.os.Build
 import com.huawei.agconnect.auth.AGConnectAuth
 import com.huawei.agconnect.cloud.database.AGConnectCloudDB
 import com.huawei.agconnect.cloud.database.CloudDBZone
@@ -19,15 +20,40 @@ class CloudDbManager(private val context: Context) {
     private val cloudDB by lazy { AGConnectCloudDB.getInstance() }
     private var zone: CloudDBZone? = null
 
+
+    private fun isCloudDbAbiSupported(): Boolean {
+        return Build.SUPPORTED_ABIS.any { abi -> abi.startsWith("arm") }
+    }
+
+
+    private fun ensureCloudDbNativeLoaded() {
+        try {
+            System.loadLibrary("naturalbase_cloud_jni")
+        } catch (e: UnsatisfiedLinkError) {
+            // 某些设备/ROM自动加载失败时，手动加载一次native库。
+            Log.w(TAG, "manual load naturalbase_cloud_jni failed", e)
+            throw e
+        }
+    }
+
     fun init(
         onSuccess: () -> Unit,
         onError: (Throwable) -> Unit
     ) {
+        if (!isCloudDbAbiSupported()) {
+            val message = "Cloud DB native库当前仅支持ARM ABI，请在ARM真机/ARM模拟器运行。当前ABI=${Build.SUPPORTED_ABIS.joinToString()}"
+            Log.e(TAG, message)
+            onError(IllegalStateException(message))
+            return
+        }
+
         try {
             AGConnectCloudDB.initialize(context)
+            ensureCloudDbNativeLoaded()
             cloudDB.createObjectType(ObjectTypeInfoHelper.getObjectTypeInfo())
-        } catch (e: Exception) {
-            onError(e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Cloud DB init failed", t)
+            onError(t)
             return
         }
 
@@ -60,6 +86,22 @@ class CloudDbManager(private val context: Context) {
             .addOnFailureListener { e ->
                 onError(e)
             }
+    }
+
+
+    fun insertOrUpdateLoginUser(
+        user: LoginUser,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeUpsert(user)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
     }
 
     fun insertOrUpdateProperty(
@@ -102,11 +144,11 @@ class CloudDbManager(private val context: Context) {
                 while (cursor.hasNext()) {
                     cursor.next()?.let { list.add(it) }
                 }
-                cursor.close()
-                snapshot.release()
                 onSuccess(list)
             } catch (e: Exception) {
                 onError(e)
+            } finally {
+                snapshot.release()
             }
         }.addOnFailureListener { e ->
             onError(e)
@@ -128,6 +170,49 @@ class CloudDbManager(private val context: Context) {
             .addOnFailureListener { e -> onError(e) }
     }
 
+    fun queryAllRentalRecords(
+        onSuccess: (List<RentalRecord>) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(RentalRecord::class.java)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val list = mutableListOf<RentalRecord>()
+                    val cursor = snapshot.snapshotObjects
+                    while (cursor.hasNext()) {
+                        cursor.next()?.let { list.add(it) }
+                    }
+                    onSuccess(list)
+                } catch (e: Exception) {
+                    onError(e)
+                } finally {
+                    snapshot.release()
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun deleteRentalRecord(
+        record: RentalRecord,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeDelete(record)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
     fun insertOrUpdatePaymentRecord(
         record: PaymentRecord,
         onSuccess: (Int) -> Unit,
@@ -139,6 +224,78 @@ class CloudDbManager(private val context: Context) {
         }
 
         dbZone.executeUpsert(record)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun queryAllPaymentRecords(
+        onSuccess: (List<PaymentRecord>) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(PaymentRecord::class.java)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val list = mutableListOf<PaymentRecord>()
+                    val cursor = snapshot.snapshotObjects
+                    while (cursor.hasNext()) {
+                        cursor.next()?.let { list.add(it) }
+                    }
+                    onSuccess(list)
+                } catch (e: Exception) {
+                    onError(e)
+                } finally {
+                    snapshot.release()
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun queryPaymentRecordsByRentalId(
+        rentalId: String,
+        onSuccess: (List<PaymentRecord>) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(PaymentRecord::class.java).equalTo("rentalId", rentalId)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val list = mutableListOf<PaymentRecord>()
+                    val cursor = snapshot.snapshotObjects
+                    while (cursor.hasNext()) {
+                        cursor.next()?.let { list.add(it) }
+                    }
+                    onSuccess(list)
+                } catch (e: Exception) {
+                    onError(e)
+                } finally {
+                    snapshot.release()
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun deletePaymentRecord(
+        record: PaymentRecord,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeDelete(record)
             .addOnSuccessListener { count -> onSuccess(count) }
             .addOnFailureListener { e -> onError(e) }
     }
@@ -159,8 +316,10 @@ class CloudDbManager(private val context: Context) {
     }
 
     fun close() {
+        val dbZone = zone ?: return
         try {
-            zone?.close()
+            cloudDB.closeCloudDBZone(dbZone)
+            zone = null
         } catch (e: AGConnectCloudDBException) {
             Log.e(TAG, "close zone failed", e)
         }
