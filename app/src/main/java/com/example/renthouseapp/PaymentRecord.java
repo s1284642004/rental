@@ -14,7 +14,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType PaymentRecord.
  *
- * @since 2026-04-03
+ * @since 2026-04-08
  */
 @PrimaryKeys({"id"})
 public final class PaymentRecord extends CloudDBZoneObject {
@@ -42,6 +42,14 @@ public final class PaymentRecord extends CloudDBZoneObject {
     private String paymentMethod;
 
     private Date receiptDate;
+
+    private String createdBy;
+
+    private Date createdAt;
+
+    private String updatedBy;
+
+    private Date updatedAt;
 
     public PaymentRecord() {
         super(PaymentRecord.class);
@@ -142,6 +150,38 @@ public final class PaymentRecord extends CloudDBZoneObject {
 
     public Date getReceiptDate() {
         return receiptDate;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedAt(Date createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Date getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public String getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedAt(Date updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Date getUpdatedAt() {
+        return updatedAt;
     }
 
 }
