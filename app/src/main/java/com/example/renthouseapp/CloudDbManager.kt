@@ -299,10 +299,25 @@ class CloudDbManager(private val context: Context) {
             .addOnFailureListener { e -> onError(e) }
     }
 
+    fun insertOrUpdateLoginUser(
+        loginUser: LoginUser,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeUpsert(loginUser)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
     fun close() {
         val dbZone = zone ?: return
         try {
-            cloudDB.closeCloudDBZone(dbZone)
+            AGConnectCloudDB.closeCloudDBZone(dbZone)
             zone = null
         } catch (e: AGConnectCloudDBException) {
             Log.e(TAG, "close zone failed", e)

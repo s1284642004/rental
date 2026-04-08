@@ -14,7 +14,11 @@ data class UiPaymentRecord(
     val isPaid: Boolean,
     val payee: String? = null,
     val paymentMethod: String? = null,
-    val receiptDate: LocalDate? = null
+    val receiptDate: LocalDate? = null,
+    val createdBy: String? = null,
+    val createdAt: LocalDate? = null,
+    val updatedBy: String? = null,
+    val updatedAt: LocalDate? = null
 )
 
 data class UiRental(
@@ -30,9 +34,18 @@ data class UiRental(
     val leaseMonths: Int,
     val paymentFrequency: Int,
     val isCompleted: Boolean,
-    val paymentSchedule: List<UiPaymentRecord>
+    val paymentSchedule: List<UiPaymentRecord>,
+    val createdBy: String? = null,
+    val createdAt: LocalDate? = null,
+    val updatedBy: String? = null,
+    val updatedAt: LocalDate? = null
 ) {
     val totalAmount: Int get() = monthlyRent * paymentFrequency
     val nextPaymentDate: LocalDate? get() = paymentSchedule.firstOrNull { !it.isPaid }?.dueDate
     val reminderDate: LocalDate? get() = nextPaymentDate?.minusDays(15)
 }
+
+data class LoginIdentity(
+    val loginName: String,
+    val phoneNumber: String
+)

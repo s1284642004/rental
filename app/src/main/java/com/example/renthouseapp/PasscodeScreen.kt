@@ -3,24 +3,20 @@ package com.example.renthouseapp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun PasscodeScreen(onUnlockSuccess: () -> Unit) {
-    // 状态管理
-    var passcode by remember { mutableStateOf("") }
+fun PasscodeScreen(onLoginSuccess: (LoginIdentity) -> Unit) {
+    var loginName by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
-
-    // 正确的专属密码
-    val correctPasscode = "740506"
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -34,8 +30,8 @@ fun PasscodeScreen(onUnlockSuccess: () -> Unit) {
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = "安全锁",
+                imageVector = Icons.Default.AccountCircle,
+                contentDescription = "用户登录",
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -49,41 +45,55 @@ fun PasscodeScreen(onUnlockSuccess: () -> Unit) {
             )
 
             Text(
-                text = "请输入 6 位专属访问密码",
+                text = "请输入登录名和手机号",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
             )
 
             OutlinedTextField(
-                value = passcode,
-                onValueChange = { input ->
-                    // 限制只能输入6位数字
-                    if (input.length <= 6 && input.all { it.isDigit() }) {
-                        passcode = input
-                        isError = false // 重新输入时清除错误状态
-
-                        // 当输入满 6 位时，自动校验
-                        if (input.length == 6) {
-                            if (input == correctPasscode) {
-                                onUnlockSuccess() // 密码正确，触发解锁回调
-                            } else {
-                                isError = true // 密码错误，变红提示
-                            }
-                        }
-                    }
+                value = loginName,
+                onValueChange = {
+                    loginName = it
+                    isError = false
                 },
+                label = { Text("登录名") },
                 isError = isError,
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), // 变成小黑点
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                textStyle = LocalTextStyle.current.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 modifier = Modifier.fillMaxWidth(0.8f)
             )
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = phoneNumber,
+                onValueChange = {
+                    phoneNumber = it.filter(Char::isDigit)
+                    isError = false
+                },
+                label = { Text("手机号") },
+                isError = isError,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                modifier = Modifier.fillMaxWidth(0.8f)
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Button(onClick = {
+                if (loginName.isBlank() || phoneNumber.isBlank()) {
+                    isError = true
+                } else {
+                    onLoginSuccess(LoginIdentity(loginName.trim(), phoneNumber.trim()))
+                }
+            }) {
+                Text("登录")
+            }
+
             if (isError) {
                 Text(
-                    text = "密码错误，请重新输入",
+                    text = "登录名和手机号不能为空",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp)
