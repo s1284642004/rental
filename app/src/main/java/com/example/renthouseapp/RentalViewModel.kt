@@ -12,6 +12,10 @@ import java.util.Date
 import java.util.UUID
 
 class RentalViewModel : ViewModel() {
+    companion object {
+        private const val UNKNOWN_OPERATOR = "unknown"
+    }
+
     private val _rentals = mutableStateListOf<UiRental>()
     val rentals: List<UiRental> get() = _rentals
 
@@ -30,18 +34,38 @@ class RentalViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
-    val isEmpty: Boolean
-        get() = rentals.isEmpty()
+    var currentLoginUser by mutableStateOf<CurrentLoginUser?>(null)
+        private set
+
+    var verifiedLoginName by mutableStateOf<String?>(null)
+        private set
+
+    var verifiedLoginCode by mutableStateOf<String?>(null)
+        private set
+
+    var loginValidationMessage by mutableStateOf<String?>(null)
+        private set
+
+    var isLoggingIn by mutableStateOf(false)
+        private set
+
+    var entryFormDraft by mutableStateOf(EntryFormDraft())
+        private set
 
     private var cloudDbManager: CloudDbManager? = null
     private var repository: CloudRentalRepository? = null
+    private var sessionStore: LoginSessionStore? = null
     private var initialized = false
     private var latestLoadRequestId = 0
-
 
     fun initialize(context: Context) {
         if (initialized) return
         initialized = true
+
+        sessionStore = LoginSessionStore(context.applicationContext)
+        sessionStore?.clear()
+        currentLoginUser = null
+        resetEntryFormDraft()
 
         cloudDbManager = CloudDbManager(context.applicationContext)
         repository = CloudRentalRepository(cloudDbManager!!)
@@ -55,6 +79,80 @@ class RentalViewModel : ViewModel() {
                 isInitialLoading = false
                 isRefreshing = false
             }
+        )
+    }
+
+    fun verifyLoginCode(loginCode: String) {
+        val normalizedCode = loginCode.trim()
+        verifiedLoginName = null
+        verifiedLoginCode = null
+        loginValidationMessage = null
+
+        if (normalizedCode.length != 11) return
+
+        val repo = repository ?: run {
+            loginValidationMessage = "Cloud DB 尚未初始化"
+            return
+        }
+
+        isLoggingIn = true
+        repo.queryLoginUserByPhoneNumber(
+            phoneNumber = normalizedCode,
+            onSuccess = { loginUser ->
+                isLoggingIn = false
+                if (loginUser == null) {
+                    loginValidationMessage = "未找到对应登录人"
+                } else {
+                    verifiedLoginCode = normalizedCode
+                    verifiedLoginName = loginUser.loginName
+                }
+            },
+            onError = {
+                isLoggingIn = false
+                loginValidationMessage = it.message ?: "登录校验失败"
+            }
+        )
+    }
+
+    fun loginWithVerifiedCode(
+        loginCode: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val normalizedCode = loginCode.trim()
+        val loginName = verifiedLoginName
+        if (normalizedCode.isBlank()) {
+            onError("请输入登录码")
+            return
+        }
+        if (verifiedLoginCode != normalizedCode || loginName.isNullOrBlank()) {
+            onError("请先输入有效登录码")
+            return
+        }
+
+        currentLoginUser = CurrentLoginUser(
+            loginName = loginName,
+            phoneNumber = normalizedCode
+        )
+        onSuccess()
+    }
+
+    fun logout() {
+        currentLoginUser = null
+        verifiedLoginName = null
+        verifiedLoginCode = null
+        loginValidationMessage = null
+        sessionStore?.clear()
+    }
+
+    fun updateEntryFormDraft(transform: (EntryFormDraft) -> EntryFormDraft) {
+        entryFormDraft = transform(entryFormDraft)
+    }
+
+    fun resetEntryFormDraft() {
+        entryFormDraft = EntryFormDraft(
+            rentStartDateText = LocalDate.now().toString(),
+            contractDateText = LocalDate.now().toString()
         )
     }
 
@@ -85,7 +183,6 @@ class RentalViewModel : ViewModel() {
 
         val requestId = ++latestLoadRequestId
         if (userRefresh) {
-            // 用户主动刷新只显示顶部刷新态，不清空当前内容。
             isRefreshing = true
         } else {
             isInitialLoading = rentals.isEmpty()
@@ -107,37 +204,51 @@ class RentalViewModel : ViewModel() {
             onError(message)
         }
 
-        repo.queryAllProperties(onSuccess = { properties ->
-            _availableProperties.clear()
-            _availableProperties.addAll(properties.filter { it.isAvailable != false }.mapNotNull { it.propertyName }.sorted())
+        repo.queryAllProperties(
+            onSuccess = { properties ->
+                _availableProperties.clear()
+                _availableProperties.addAll(
+                    properties
+                        .filter { it.isAvailable != false }
+                        .mapNotNull { it.propertyName }
+                        .sorted()
+                )
 
-            repo.queryAllRentalRecords(onSuccess = { records ->
-                repo.queryAllPaymentRecords(onSuccess = { payments ->
-                    val grouped = payments.groupBy { it.rentalId }
-                    val uiList = records.map { record ->
-                        val uiPayments = grouped[record.id].orEmpty()
-                            .map { it.toUiPayment() }
-                            .sortedBy { it.periodNumber }
-                        record.toUiRental(uiPayments)
+                repo.queryAllRentalRecords(
+                    onSuccess = { records ->
+                        repo.queryAllPaymentRecords(
+                            onSuccess = { payments ->
+                                val grouped = payments.groupBy { it.rentalId }
+                                val uiList = records.map { record ->
+                                    val uiPayments = grouped[record.id].orEmpty()
+                                        .map { it.toUiPayment() }
+                                        .sortedBy { it.periodNumber }
+                                    record.toUiRental(uiPayments)
+                                }
+                                _rentals.clear()
+                                _rentals.addAll(uiList)
+                                finishSuccess(uiList.isEmpty())
+                            },
+                            onError = {
+                                val msg = it.message ?: "收款记录获取失败"
+                                initError = msg
+                                finishError(msg)
+                            }
+                        )
+                    },
+                    onError = {
+                        val msg = it.message ?: "租约获取失败"
+                        initError = msg
+                        finishError(msg)
                     }
-                    _rentals.clear()
-                    _rentals.addAll(uiList)
-                    finishSuccess(uiList.isEmpty())
-                }, onError = {
-                    val msg = it.message ?: "支付记录获取失败"
-                    initError = msg
-                    finishError(msg)
-                })
-            }, onError = {
-                val msg = it.message ?: "租约获取失败"
+                )
+            },
+            onError = {
+                val msg = it.message ?: "房源获取失败"
                 initError = msg
                 finishError(msg)
-            })
-        }, onError = {
-            val msg = it.message ?: "房源获取失败"
-            initError = msg
-            finishError(msg)
-        })
+            }
+        )
     }
 
     fun addRental(
@@ -155,7 +266,8 @@ class RentalViewModel : ViewModel() {
     ) {
         val repo = repository ?: return onError("Cloud DB 尚未初始化")
 
-        ensureProperty(propertyName,
+        ensureProperty(
+            propertyName = propertyName,
             onResolved = { property ->
                 val rentalId = UUID.randomUUID().toString()
                 val rental = RentalRecord().apply {
@@ -172,20 +284,38 @@ class RentalViewModel : ViewModel() {
                     this.paymentFrequency = paymentFrequency
                     isCompleted = false
                 }
+                applyCreateAudit(rental)
 
-                repo.upsertRentalRecord(rental, onSuccess = {
-                    val schedules = generateSchedule(rentalId, rentStartDate, monthlyRent, leaseMonths, paymentFrequency)
-                    upsertSchedules(repo, schedules, 0,
-                        onDone = {
-                            property.isAvailable = false
-                            repo.upsertProperty(property, onSuccess = {
-                                refreshAllData()
-                                onSuccess()
-                            }, onError = { onError(it.message ?: "房源写入失败") })
-                        },
-                        onError = { onError(it.message ?: "账单写入失败") }
-                    )
-                }, onError = { onError(it.message ?: "合同写入失败") })
+                repo.upsertRentalRecord(
+                    rental,
+                    onSuccess = {
+                        val schedules = generateSchedule(
+                            rentalId = rentalId,
+                            start = rentStartDate,
+                            rent = monthlyRent,
+                            months = leaseMonths,
+                            freq = paymentFrequency
+                        )
+                        upsertSchedules(
+                            repo = repo,
+                            records = schedules,
+                            index = 0,
+                            onDone = {
+                                property.isAvailable = false
+                                repo.upsertProperty(
+                                    property,
+                                    onSuccess = {
+                                        refreshAllData()
+                                        onSuccess()
+                                    },
+                                    onError = { onError(it.message ?: "房源写入失败") }
+                                )
+                            },
+                            onError = { onError(it.message ?: "账单写入失败") }
+                        )
+                    },
+                    onError = { onError(it.message ?: "合同写入失败") }
+                )
             },
             onError = onError
         )
@@ -195,63 +325,87 @@ class RentalViewModel : ViewModel() {
         val repo = repository ?: return
         val target = _rentals.firstOrNull { it.id == rentalId } ?: return
 
-        repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { payments ->
-            deletePaymentsSequentially(repo, payments, 0) {
-                val record = RentalRecord().apply {
-                    id = target.id
-                    propertyId = target.propertyId
-                    propertyName = target.propertyName
-                }
-                repo.deleteRentalRecord(record, onSuccess = {
-                    // 删除合同后房源可再次出租。
-                    repo.queryAllProperties(onSuccess = { properties ->
-                        val property = properties.firstOrNull { it.id == target.propertyId }
-                            ?: properties.firstOrNull { it.propertyName == target.propertyName }
+        repo.queryPaymentRecordsByRentalId(
+            rentalId,
+            onSuccess = { payments ->
+                deletePaymentsSequentially(repo, payments, 0) {
+                    val record = RentalRecord().apply {
+                        id = target.id
+                        propertyId = target.propertyId
+                        propertyName = target.propertyName
+                    }
+                    repo.deleteRentalRecord(
+                        record,
+                        onSuccess = {
+                            repo.queryAllProperties(
+                                onSuccess = { properties ->
+                                    val property = properties.firstOrNull { it.id == target.propertyId }
+                                        ?: properties.firstOrNull { it.propertyName == target.propertyName }
 
-                        if (property != null) {
-                            property.isAvailable = true
-                            repo.upsertProperty(property, onSuccess = { refreshAllData() }, onError = { initError = it.message })
-                        } else {
-                            // 兼容历史脏数据：若未找到对应Property，补写一条可用房源以确保合同删除后可再次录入。
-                            val fallback = Property().apply {
-                                id = if (target.propertyId.isNotBlank()) target.propertyId else UUID.randomUUID().toString()
-                                propertyName = target.propertyName
-                                isAvailable = true
-                            }
-                            repo.upsertProperty(fallback, onSuccess = { refreshAllData() }, onError = { initError = it.message })
-                        }
-                    }, onError = { initError = it.message })
-                }, onError = { initError = it.message })
-            }
-        }, onError = { initError = it.message })
+                                    if (property != null) {
+                                        property.isAvailable = true
+                                        repo.upsertProperty(
+                                            property,
+                                            onSuccess = { refreshAllData() },
+                                            onError = { initError = it.message }
+                                        )
+                                    } else {
+                                        val fallback = Property().apply {
+                                            id = if (target.propertyId.isNotBlank()) target.propertyId else UUID.randomUUID().toString()
+                                            propertyName = target.propertyName
+                                            isAvailable = true
+                                        }
+                                        repo.upsertProperty(
+                                            fallback,
+                                            onSuccess = { refreshAllData() },
+                                            onError = { initError = it.message }
+                                        )
+                                    }
+                                },
+                                onError = { initError = it.message }
+                            )
+                        },
+                        onError = { initError = it.message }
+                    )
+                }
+            },
+            onError = { initError = it.message }
+        )
     }
 
     fun updateTenantInfo(rentalId: String, newName: String, newPhone: String, newIdCard: String) {
         val repo = repository ?: return
-        val target = _rentals.firstOrNull { it.id == rentalId } ?: return
-        val record = RentalRecord().apply {
-            id = target.id
-            propertyId = target.propertyId
-            propertyName = target.propertyName
-            tenantName = newName
-            tenantPhone = newPhone
-            tenantIdCard = newIdCard
-            contractDate = target.contractDate.toDate()
-            rentStartDate = target.rentStartDate.toDate()
-            monthlyRent = target.monthlyRent
-            leaseMonths = target.leaseMonths
-            paymentFrequency = target.paymentFrequency
-            isCompleted = target.isCompleted
-        }
-        repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
+        repo.queryRentalRecordById(
+            rentalId,
+            onSuccess = { record ->
+                val existing = record ?: return@queryRentalRecordById
+                existing.tenantName = newName
+                existing.tenantPhone = newPhone
+                existing.tenantIdCard = newIdCard
+                applyUpdateAudit(existing)
+                repo.upsertRentalRecord(
+                    existing,
+                    onSuccess = { refreshAllData() },
+                    onError = { initError = it.message }
+                )
+            },
+            onError = { initError = it.message }
+        )
     }
 
     fun updatePaymentAmount(rentalId: String, paymentId: String, newAmount: Int) {
-        updatePayment(rentalId, paymentId) { payment -> payment.amount = newAmount }
+        updatePayment(rentalId, paymentId, onSuccess = {}) { payment -> payment.amount = newAmount }
     }
 
-    fun confirmPayment(rentalId: String, paymentId: String, payee: String, method: String, date: LocalDate) {
-        updatePayment(rentalId, paymentId) { payment ->
+    fun confirmPayment(
+        rentalId: String,
+        paymentId: String,
+        payee: String,
+        method: String,
+        date: LocalDate,
+        onSuccess: () -> Unit = {}
+    ) {
+        updatePayment(rentalId, paymentId, onSuccess = onSuccess) { payment ->
             payment.isPaid = true
             payment.payee = payee
             payment.paymentMethod = method
@@ -260,7 +414,7 @@ class RentalViewModel : ViewModel() {
     }
 
     fun revokePayment(rentalId: String, paymentId: String) {
-        updatePayment(rentalId, paymentId) { payment ->
+        updatePayment(rentalId, paymentId, onSuccess = {}) { payment ->
             payment.isPaid = false
             payment.payee = null
             payment.paymentMethod = null
@@ -268,45 +422,61 @@ class RentalViewModel : ViewModel() {
         }
     }
 
-    private fun updatePayment(rentalId: String, paymentId: String, mutate: (PaymentRecord) -> Unit) {
+    private fun updatePayment(
+        rentalId: String,
+        paymentId: String,
+        onSuccess: () -> Unit,
+        mutate: (PaymentRecord) -> Unit
+    ) {
         val repo = repository ?: return
-        repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { payments ->
-            val payment = payments.firstOrNull { it.id == paymentId } ?: return@queryPaymentRecordsByRentalId
-            mutate(payment)
-            repo.upsertPaymentRecord(payment, onSuccess = {
-                syncRentalCompletionFromCloud(rentalId)
-            }, onError = { initError = it.message })
-        }, onError = { initError = it.message })
+        repo.queryPaymentRecordsByRentalId(
+            rentalId,
+            onSuccess = { payments ->
+                val payment = payments.firstOrNull { it.id == paymentId } ?: return@queryPaymentRecordsByRentalId
+                mutate(payment)
+                applyUpdateAudit(payment)
+                repo.upsertPaymentRecord(
+                    payment,
+                    onSuccess = {
+                        onSuccess()
+                        syncRentalCompletionFromCloud(rentalId)
+                    },
+                    onError = { initError = it.message }
+                )
+            },
+            onError = { initError = it.message }
+        )
     }
 
     private fun syncRentalCompletionFromCloud(rentalId: String) {
         val repo = repository ?: return
-        repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { cloudPayments ->
-            val shouldCompleted = cloudPayments.isNotEmpty() && cloudPayments.all { it.isPaid == true }
-            val rental = _rentals.firstOrNull { it.id == rentalId } ?: return@queryPaymentRecordsByRentalId
-            if (rental.isCompleted == shouldCompleted) {
-                refreshAllData()
-                return@queryPaymentRecordsByRentalId
-            }
+        repo.queryPaymentRecordsByRentalId(
+            rentalId,
+            onSuccess = { cloudPayments ->
+                val shouldCompleted = cloudPayments.isNotEmpty() && cloudPayments.all { it.isPaid == true }
+                repo.queryRentalRecordById(
+                    rentalId,
+                    onSuccess = { rental ->
+                        val existing = rental ?: return@queryRentalRecordById
+                        if (existing.isCompleted == shouldCompleted) {
+                            refreshAllData()
+                            return@queryRentalRecordById
+                        }
 
-            val record = RentalRecord().apply {
-                id = rental.id
-                propertyId = rental.propertyId
-                propertyName = rental.propertyName
-                tenantName = rental.tenantName
-                tenantPhone = rental.tenantPhone
-                tenantIdCard = rental.tenantIdCard
-                contractDate = rental.contractDate.toDate()
-                rentStartDate = rental.rentStartDate.toDate()
-                monthlyRent = rental.monthlyRent
-                leaseMonths = rental.leaseMonths
-                paymentFrequency = rental.paymentFrequency
-                isCompleted = shouldCompleted
-            }
-            repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
-        }, onError = { initError = it.message })
+                        existing.isCompleted = shouldCompleted
+                        applyUpdateAudit(existing)
+                        repo.upsertRentalRecord(
+                            existing,
+                            onSuccess = { refreshAllData() },
+                            onError = { initError = it.message }
+                        )
+                    },
+                    onError = { initError = it.message }
+                )
+            },
+            onError = { initError = it.message }
+        )
     }
-
 
     private fun ensureProperty(
         propertyName: String,
@@ -315,24 +485,27 @@ class RentalViewModel : ViewModel() {
     ) {
         val repo = repository ?: return onError("Cloud DB 尚未初始化")
 
-        repo.queryAllProperties(onSuccess = { properties ->
-            val existing = properties.firstOrNull { it.propertyName == propertyName }
-            if (existing != null) {
-                onResolved(existing)
-                return@queryAllProperties
-            }
+        repo.queryAllProperties(
+            onSuccess = { properties ->
+                val existing = properties.firstOrNull { it.propertyName == propertyName }
+                if (existing != null) {
+                    onResolved(existing)
+                    return@queryAllProperties
+                }
 
-            val property = Property().apply {
-                id = UUID.randomUUID().toString()
-                this.propertyName = propertyName
-                isAvailable = true
-            }
-            repo.upsertProperty(property, onSuccess = {
-                onResolved(property)
-            }, onError = {
-                onError(it.message ?: "房源写入失败")
-            })
-        }, onError = { onError(it.message ?: "房源查询失败") })
+                val property = Property().apply {
+                    id = UUID.randomUUID().toString()
+                    this.propertyName = propertyName
+                    isAvailable = true
+                }
+                repo.upsertProperty(
+                    property,
+                    onSuccess = { onResolved(property) },
+                    onError = { onError(it.message ?: "房源写入失败") }
+                )
+            },
+            onError = { onError(it.message ?: "房源查询失败") }
+        )
     }
 
     private fun upsertSchedules(
@@ -346,9 +519,11 @@ class RentalViewModel : ViewModel() {
             onDone()
             return
         }
-        repo.upsertPaymentRecord(records[index], onSuccess = {
-            upsertSchedules(repo, records, index + 1, onDone, onError)
-        }, onError = onError)
+        repo.upsertPaymentRecord(
+            records[index],
+            onSuccess = { upsertSchedules(repo, records, index + 1, onDone, onError) },
+            onError = onError
+        )
     }
 
     private fun deletePaymentsSequentially(
@@ -361,12 +536,14 @@ class RentalViewModel : ViewModel() {
             onDone()
             return
         }
-        repo.deletePaymentRecord(records[index], onSuccess = {
-            deletePaymentsSequentially(repo, records, index + 1, onDone)
-        }, onError = {
-            initError = it.message
-            onDone()
-        })
+        repo.deletePaymentRecord(
+            records[index],
+            onSuccess = { deletePaymentsSequentially(repo, records, index + 1, onDone) },
+            onError = {
+                initError = it.message
+                onDone()
+            }
+        )
     }
 
     private fun generateSchedule(
@@ -395,10 +572,59 @@ class RentalViewModel : ViewModel() {
                     dueDate = periodStart.toDate()
                     reminderDate = periodStart.minusDays(15).toDate()
                     isPaid = false
+                    applyCreateAudit(this)
                 }
             )
         }
         return schedule
+    }
+
+    private fun applyCreateAudit(record: RentalRecord) {
+        val now = Date()
+        val operator = currentOperatorName()
+        record.createdBy = operator
+        record.createdAt = now
+        record.updatedBy = operator
+        record.updatedAt = now
+    }
+
+    private fun applyUpdateAudit(record: RentalRecord) {
+        record.updatedBy = currentOperatorName()
+        record.updatedAt = Date()
+        if (record.createdBy.isNullOrBlank()) {
+            record.createdBy = currentOperatorName()
+        } else if (record.createdBy == currentLoginUser?.phoneNumber) {
+            record.createdBy = currentOperatorName()
+        }
+        if (record.createdAt == null) {
+            record.createdAt = record.updatedAt
+        }
+    }
+
+    private fun applyCreateAudit(record: PaymentRecord) {
+        val now = Date()
+        val operator = currentOperatorName()
+        record.createdBy = operator
+        record.createdAt = now
+        record.updatedBy = operator
+        record.updatedAt = now
+    }
+
+    private fun applyUpdateAudit(record: PaymentRecord) {
+        record.updatedBy = currentOperatorName()
+        record.updatedAt = Date()
+        if (record.createdBy.isNullOrBlank()) {
+            record.createdBy = currentOperatorName()
+        } else if (record.createdBy == currentLoginUser?.phoneNumber) {
+            record.createdBy = currentOperatorName()
+        }
+        if (record.createdAt == null) {
+            record.createdAt = record.updatedAt
+        }
+    }
+
+    private fun currentOperatorName(): String {
+        return currentLoginUser?.loginName?.takeIf { it.isNotBlank() } ?: UNKNOWN_OPERATOR
     }
 
     private fun RentalRecord.toUiRental(payments: List<UiPaymentRecord>): UiRental {
@@ -415,6 +641,10 @@ class RentalViewModel : ViewModel() {
             leaseMonths = leaseMonths ?: 0,
             paymentFrequency = paymentFrequency ?: 0,
             isCompleted = isCompleted == true,
+            createdBy = createdBy.orEmpty(),
+            createdAt = createdAt?.toLocalDateTime(),
+            updatedBy = updatedBy.orEmpty(),
+            updatedAt = updatedAt?.toLocalDateTime(),
             paymentSchedule = payments
         )
     }
@@ -432,10 +662,12 @@ class RentalViewModel : ViewModel() {
             isPaid = isPaid == true,
             payee = payee,
             paymentMethod = paymentMethod,
-            receiptDate = receiptDate?.toLocalDate()
+            receiptDate = receiptDate?.toLocalDate(),
+            updatedAt = updatedAt?.toLocalDateTime()
         )
     }
 
     private fun LocalDate.toDate(): Date = Date.from(atStartOfDay(ZoneId.systemDefault()).toInstant())
     private fun Date.toLocalDate(): LocalDate = toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+    private fun Date.toLocalDateTime() = toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime()
 }

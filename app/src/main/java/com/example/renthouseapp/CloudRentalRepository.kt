@@ -17,8 +17,28 @@ class CloudRentalRepository(private val cloudDbManager: CloudDbManager) {
         cloudDbManager.deleteProperty(property, onSuccess, onError)
     }
 
+    fun upsertLoginUser(user: LoginUser, onSuccess: (Int) -> Unit, onError: (Throwable) -> Unit) {
+        cloudDbManager.insertOrUpdateLoginUser(user, onSuccess, onError)
+    }
+
+    fun queryLoginUserByPhoneNumber(
+        phoneNumber: String,
+        onSuccess: (LoginUser?) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        cloudDbManager.queryLoginUserByPhoneNumber(phoneNumber, onSuccess, onError)
+    }
+
     fun upsertRentalRecord(record: RentalRecord, onSuccess: (Int) -> Unit, onError: (Throwable) -> Unit) {
         cloudDbManager.insertOrUpdateRentalRecord(record, onSuccess, onError)
+    }
+
+    fun queryRentalRecordById(
+        rentalId: String,
+        onSuccess: (RentalRecord?) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        cloudDbManager.queryRentalRecordById(rentalId, onSuccess, onError)
     }
 
     fun queryAllRentalRecords(onSuccess: (List<RentalRecord>) -> Unit, onError: (Throwable) -> Unit) {

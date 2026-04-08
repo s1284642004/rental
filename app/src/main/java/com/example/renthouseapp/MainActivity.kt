@@ -2,29 +2,32 @@ package com.example.renthouseapp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.renthouseapp.ui.theme.RentHouseAppTheme
 
@@ -40,26 +43,34 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RentHouseAppApp() {
-    // ======== 新增：系统解锁状态 ========
-    var isUnlocked by rememberSaveable { mutableStateOf(false) }
-
-    // 如果没有解锁，强制全屏显示密码界面
-    if (!isUnlocked) {
-        PasscodeScreen(
-            onUnlockSuccess = { isUnlocked = true } // 密码正确后，将状态改为已解锁
-        )
-        return // 拦截：不往下执行加载主要数据的代码
-    }
-
-    // ======== 下面是原来的系统主界面代码（解锁后才可见） ========
     val rentalViewModel: RentalViewModel = viewModel()
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         rentalViewModel.initialize(context)
     }
+
+    val currentLoginUser = rentalViewModel.currentLoginUser
+    if (currentLoginUser == null) {
+        PasscodeScreen(
+            isLoading = rentalViewModel.isLoggingIn,
+            verifiedLoginName = rentalViewModel.verifiedLoginName,
+            validationMessage = rentalViewModel.loginValidationMessage,
+            onVerifyCode = { rentalViewModel.verifyLoginCode(it) },
+            onLogin = { loginCode ->
+                rentalViewModel.loginWithVerifiedCode(
+                    loginCode = loginCode,
+                    onSuccess = {},
+                    onError = {}
+                )
+            }
+        )
+        return
+    }
+
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
     val selectedRental = rentalViewModel.rentals.find { it.id == selectedRentalId }
@@ -91,13 +102,29 @@ fun RentHouseAppApp() {
                 }
             }
         ) {
-            Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    TopAppBar(
+                        title = { Text(currentDestination.label) }
+                    )
+                }
+            ) { innerPadding ->
                 Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                     when (currentDestination) {
-                        AppDestinations.ENTRY -> RentalEntryScreen(viewModel = rentalViewModel)
+                        AppDestinations.ENTRY -> RentalEntryScreen(
+                            viewModel = rentalViewModel,
+                            onLogout = {
+                                rentalViewModel.logout()
+                                currentDestination = AppDestinations.LIST
+                            }
+                        )
                         AppDestinations.LIST -> RentalListScreen(
                             viewModel = rentalViewModel,
                             onRentalClick = { clickedRental -> selectedRentalId = clickedRental.id }
+                        )
+                        AppDestinations.PAYMENT -> PaymentCollectionScreen(
+                            viewModel = rentalViewModel
                         )
                     }
                 }
@@ -107,6 +134,7 @@ fun RentHouseAppApp() {
 }
 
 enum class AppDestinations(val label: String, val icon: ImageVector) {
-    ENTRY("录入", Icons.Default.Add),
-    LIST("房源", Icons.Default.Home)
+    ENTRY("\u5f55\u5165", Icons.Default.Add),
+    LIST("\u623f\u6e90", Icons.Default.Home),
+    PAYMENT("\u6536\u6b3e", Icons.Default.DateRange)
 }

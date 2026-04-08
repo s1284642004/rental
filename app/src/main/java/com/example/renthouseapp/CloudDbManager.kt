@@ -9,6 +9,7 @@ import com.huawei.agconnect.cloud.database.CloudDBZone
 import com.huawei.agconnect.cloud.database.CloudDBZoneConfig
 import com.huawei.agconnect.cloud.database.CloudDBZoneQuery
 import com.huawei.agconnect.cloud.database.exceptions.AGConnectCloudDBException
+import java.lang.reflect.Modifier
 
 class CloudDbManager(private val context: Context) {
 
@@ -151,6 +152,72 @@ class CloudDbManager(private val context: Context) {
 
         dbZone.executeUpsert(record)
             .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun insertOrUpdateLoginUser(
+        user: LoginUser,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeUpsert(user)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun queryLoginUserByPhoneNumber(
+        phoneNumber: String,
+        onSuccess: (LoginUser?) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(LoginUser::class.java)
+            .equalTo("phoneNumber", phoneNumber)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val cursor = snapshot.snapshotObjects
+                    onSuccess(if (cursor.hasNext()) cursor.next() else null)
+                } catch (e: Exception) {
+                    onError(e)
+                } finally {
+                    snapshot.release()
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun queryRentalRecordById(
+        rentalId: String,
+        onSuccess: (RentalRecord?) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(RentalRecord::class.java).equalTo("id", rentalId)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val cursor = snapshot.snapshotObjects
+                    onSuccess(if (cursor.hasNext()) cursor.next() else null)
+                } catch (e: Exception) {
+                    onError(e)
+                } finally {
+                    snapshot.release()
+                }
+            }
             .addOnFailureListener { e -> onError(e) }
     }
 
@@ -302,9 +369,20 @@ class CloudDbManager(private val context: Context) {
     fun close() {
         val dbZone = zone ?: return
         try {
-            cloudDB.closeCloudDBZone(dbZone)
+            val staticCloseMethod = AGConnectCloudDB::class.java.methods.firstOrNull { method ->
+                method.name == "closeCloudDBZone" &&
+                    Modifier.isStatic(method.modifiers) &&
+                    method.parameterTypes.contentEquals(arrayOf(CloudDBZone::class.java))
+            }
+            if (staticCloseMethod != null) {
+                staticCloseMethod.invoke(null, dbZone)
+            } else {
+                cloudDB.closeCloudDBZone(dbZone)
+            }
             zone = null
         } catch (e: AGConnectCloudDBException) {
+            Log.e(TAG, "close zone failed", e)
+        } catch (e: Exception) {
             Log.e(TAG, "close zone failed", e)
         }
     }
