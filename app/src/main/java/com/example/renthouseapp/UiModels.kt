@@ -30,6 +30,8 @@ data class UiRental(
     val leaseMonths: Int,
     val paymentFrequency: Int,
     val isCompleted: Boolean,
+    val createdBy: String?,
+    val createdAt: LocalDate?,
     val paymentSchedule: List<UiPaymentRecord>
 ) {
     val totalAmount: Int get() = monthlyRent * paymentFrequency

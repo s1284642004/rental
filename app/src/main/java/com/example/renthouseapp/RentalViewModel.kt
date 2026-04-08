@@ -30,6 +30,9 @@ class RentalViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    var currentLoginUser by mutableStateOf<CurrentLoginUser?>(null)
+        private set
+
     val isEmpty: Boolean
         get() = rentals.isEmpty()
 
@@ -37,6 +40,16 @@ class RentalViewModel : ViewModel() {
     private var repository: CloudRentalRepository? = null
     private var initialized = false
     private var latestLoadRequestId = 0
+
+    override fun onCleared() {
+        cloudDbManager?.close()
+        super.onCleared()
+    }
+
+    fun setCurrentLoginUser(user: CurrentLoginUser) {
+        currentLoginUser = user
+        syncLoginUserToCloud(user)
+    }
 
 
     fun initialize(context: Context) {
@@ -47,7 +60,10 @@ class RentalViewModel : ViewModel() {
         repository = CloudRentalRepository(cloudDbManager!!)
 
         cloudDbManager?.init(
-            onSuccess = { loadData(userRefresh = false, onSuccess = {}, onError = {}) },
+            onSuccess = {
+                currentLoginUser?.let { syncLoginUserToCloud(it) }
+                loadData(userRefresh = false, onSuccess = {}, onError = {})
+            },
             onError = {
                 val msg = it.message ?: "Cloud DB 初始化失败"
                 initError = msg
@@ -140,6 +156,19 @@ class RentalViewModel : ViewModel() {
         })
     }
 
+    private fun syncLoginUserToCloud(user: CurrentLoginUser) {
+        val repo = repository ?: return
+        val phone = user.phoneNumber.ifBlank { "unknown" }
+        repo.queryLoginUserByPhoneNumber(phone, onSuccess = { existing ->
+            val loginUser = (existing ?: LoginUser()).apply {
+                id = existing?.id ?: phone
+                loginName = user.loginName
+                phoneNumber = phone
+            }
+            repo.upsertLoginUser(loginUser, onSuccess = {}, onError = { initError = it.message })
+        }, onError = { initError = it.message })
+    }
+
     fun addRental(
         propertyName: String,
         tenantName: String,
@@ -172,6 +201,7 @@ class RentalViewModel : ViewModel() {
                     this.paymentFrequency = paymentFrequency
                     isCompleted = false
                 }
+                applyAuditForCreate(rental)
 
                 repo.upsertRentalRecord(rental, onSuccess = {
                     val schedules = generateSchedule(rentalId, rentStartDate, monthlyRent, leaseMonths, paymentFrequency)
@@ -243,6 +273,7 @@ class RentalViewModel : ViewModel() {
             paymentFrequency = target.paymentFrequency
             isCompleted = target.isCompleted
         }
+        applyAuditForUpdate(record, targetCreatedBy = target.createdBy, targetCreatedAt = target.createdAt)
         repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
     }
 
@@ -273,6 +304,7 @@ class RentalViewModel : ViewModel() {
         repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { payments ->
             val payment = payments.firstOrNull { it.id == paymentId } ?: return@queryPaymentRecordsByRentalId
             mutate(payment)
+            applyAuditForUpdate(payment, targetCreatedBy = payment.createdBy, targetCreatedAt = payment.createdAt)
             repo.upsertPaymentRecord(payment, onSuccess = {
                 syncRentalCompletionFromCloud(rentalId)
             }, onError = { initError = it.message })
@@ -303,6 +335,7 @@ class RentalViewModel : ViewModel() {
                 paymentFrequency = rental.paymentFrequency
                 isCompleted = shouldCompleted
             }
+            applyAuditForUpdate(record, targetCreatedBy = rental.createdBy, targetCreatedAt = rental.createdAt)
             repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
         }, onError = { initError = it.message })
     }
@@ -384,19 +417,19 @@ class RentalViewModel : ViewModel() {
         for (i in 0 until totalPeriods) {
             val periodStart = start.plusMonths((i * actualFreq).toLong())
             val periodEnd = start.plusMonths(((i + 1) * actualFreq).toLong()).minusDays(1)
-            schedule.add(
-                PaymentRecord().apply {
-                    id = UUID.randomUUID().toString()
-                    this.rentalId = rentalId
-                    periodNumber = i + 1
-                    amount = amountPerPeriod
-                    periodStartDate = periodStart.toDate()
-                    periodEndDate = periodEnd.toDate()
-                    dueDate = periodStart.toDate()
-                    reminderDate = periodStart.minusDays(15).toDate()
-                    isPaid = false
-                }
-            )
+            val payment = PaymentRecord().apply {
+                id = UUID.randomUUID().toString()
+                this.rentalId = rentalId
+                periodNumber = i + 1
+                amount = amountPerPeriod
+                periodStartDate = periodStart.toDate()
+                periodEndDate = periodEnd.toDate()
+                dueDate = periodStart.toDate()
+                reminderDate = periodStart.minusDays(15).toDate()
+                isPaid = false
+            }
+            applyAuditForCreate(payment)
+            schedule.add(payment)
         }
         return schedule
     }
@@ -415,8 +448,44 @@ class RentalViewModel : ViewModel() {
             leaseMonths = leaseMonths ?: 0,
             paymentFrequency = paymentFrequency ?: 0,
             isCompleted = isCompleted == true,
+            createdBy = createdBy,
+            createdAt = createdAt?.toLocalDate(),
             paymentSchedule = payments
         )
+    }
+
+    private fun currentOperatorPhone(): String = currentLoginUser?.phoneNumber?.ifBlank { "unknown" } ?: "unknown"
+
+    private fun applyAuditForCreate(record: RentalRecord) {
+        val now = Date()
+        val operator = currentOperatorPhone()
+        record.createdBy = operator
+        record.createdAt = now
+        record.updatedBy = operator
+        record.updatedAt = now
+    }
+
+    private fun applyAuditForCreate(record: PaymentRecord) {
+        val now = Date()
+        val operator = currentOperatorPhone()
+        record.createdBy = operator
+        record.createdAt = now
+        record.updatedBy = operator
+        record.updatedAt = now
+    }
+
+    private fun applyAuditForUpdate(record: RentalRecord, targetCreatedBy: String?, targetCreatedAt: Date?) {
+        record.createdBy = targetCreatedBy
+        record.createdAt = targetCreatedAt
+        record.updatedBy = currentOperatorPhone()
+        record.updatedAt = Date()
+    }
+
+    private fun applyAuditForUpdate(record: PaymentRecord, targetCreatedBy: String?, targetCreatedAt: Date?) {
+        record.createdBy = targetCreatedBy
+        record.createdAt = targetCreatedAt
+        record.updatedBy = currentOperatorPhone()
+        record.updatedAt = Date()
     }
 
     private fun PaymentRecord.toUiPayment(): UiPaymentRecord {
