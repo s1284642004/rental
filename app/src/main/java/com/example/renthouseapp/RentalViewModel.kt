@@ -449,7 +449,7 @@ class RentalViewModel : ViewModel() {
             paymentFrequency = paymentFrequency ?: 0,
             isCompleted = isCompleted == true,
             createdBy = createdBy,
-            createdAt = createdAt,
+            createdAt = createdAt?.toLocalDate(),
             paymentSchedule = payments
         )
     }
