@@ -299,6 +299,47 @@ class CloudDbManager(private val context: Context) {
             .addOnFailureListener { e -> onError(e) }
     }
 
+
+    fun insertOrUpdateLoginUser(
+        user: LoginUser,
+        onSuccess: (Int) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        dbZone.executeUpsert(user)
+            .addOnSuccessListener { count -> onSuccess(count) }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
+    fun queryLoginUserByPhoneNumber(
+        phoneNumber: String,
+        onSuccess: (LoginUser?) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(LoginUser::class.java).equalTo("phoneNumber", phoneNumber)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val cursor = snapshot.snapshotObjects
+                    onSuccess(if (cursor.hasNext()) cursor.next() else null)
+                } catch (e: Exception) {
+                    onError(e)
+                } finally {
+                    snapshot.release()
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
     fun close() {
         val dbZone = zone ?: return
         try {

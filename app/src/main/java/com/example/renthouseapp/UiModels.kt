@@ -1,6 +1,7 @@
 package com.example.renthouseapp
 
 import java.time.LocalDate
+import java.util.Date
 
 data class UiPaymentRecord(
     val id: String,
@@ -30,6 +31,8 @@ data class UiRental(
     val leaseMonths: Int,
     val paymentFrequency: Int,
     val isCompleted: Boolean,
+    val createdBy: String?,
+    val createdAt: Date?,
     val paymentSchedule: List<UiPaymentRecord>
 ) {
     val totalAmount: Int get() = monthlyRent * paymentFrequency
