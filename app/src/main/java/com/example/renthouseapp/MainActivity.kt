@@ -6,8 +6,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
@@ -19,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
@@ -42,23 +44,27 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RentHouseAppApp() {
-    // ======== 新增：系统解锁状态 ========
-    var isUnlocked by rememberSaveable { mutableStateOf(false) }
-
-    // 如果没有解锁，强制全屏显示密码界面
-    if (!isUnlocked) {
-        PasscodeScreen(
-            onUnlockSuccess = { isUnlocked = true } // 密码正确后，将状态改为已解锁
-        )
-        return // 拦截：不往下执行加载主要数据的代码
-    }
-
-    // ======== 下面是原来的系统主界面代码（解锁后才可见） ========
     val rentalViewModel: RentalViewModel = viewModel()
     val context = LocalContext.current
+    val loginSessionStore = remember(context) { LoginSessionStore(context.applicationContext) }
+    var currentLoginUser by remember { mutableStateOf(loginSessionStore.getUser()) }
+
+    // 如果没有登录，强制全屏显示登录界面
+    if (currentLoginUser == null) {
+        PasscodeScreen(
+            onLoginSuccess = { user ->
+                loginSessionStore.saveUser(user)
+                currentLoginUser = user
+            }
+        )
+        return
+    }
 
     LaunchedEffect(Unit) {
         rentalViewModel.initialize(context)
+    }
+    LaunchedEffect(currentLoginUser) {
+        currentLoginUser?.let { rentalViewModel.setCurrentLoginUser(it) }
     }
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
@@ -92,13 +98,19 @@ fun RentHouseAppApp() {
             }
         ) {
             Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                    when (currentDestination) {
-                        AppDestinations.ENTRY -> RentalEntryScreen(viewModel = rentalViewModel)
-                        AppDestinations.LIST -> RentalListScreen(
-                            viewModel = rentalViewModel,
-                            onRentalClick = { clickedRental -> selectedRentalId = clickedRental.id }
-                        )
+                Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                    Text(
+                        text = "当前登录人：${currentLoginUser?.loginName} (${currentLoginUser?.phoneNumber})",
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        when (currentDestination) {
+                            AppDestinations.ENTRY -> RentalEntryScreen(viewModel = rentalViewModel)
+                            AppDestinations.LIST -> RentalListScreen(
+                                viewModel = rentalViewModel,
+                                onRentalClick = { clickedRental -> selectedRentalId = clickedRental.id }
+                            )
+                        }
                     }
                 }
             }
