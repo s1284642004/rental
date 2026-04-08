@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,24 +43,28 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun RentHouseAppApp() {
-    // ======== 新增：系统解锁状态 ========
-    var isUnlocked by rememberSaveable { mutableStateOf(false) }
-
-    // 如果没有解锁，强制全屏显示密码界面
-    if (!isUnlocked) {
-        PasscodeScreen(
-            onUnlockSuccess = { isUnlocked = true } // 密码正确后，将状态改为已解锁
-        )
-        return // 拦截：不往下执行加载主要数据的代码
-    }
-
-    // ======== 下面是原来的系统主界面代码（解锁后才可见） ========
     val rentalViewModel: RentalViewModel = viewModel()
     val context = LocalContext.current
+    val loginSessionStore = remember { LoginSessionStore(context) }
+    var currentLogin by rememberSaveable { mutableStateOf(loginSessionStore.load()) }
+
+    if (currentLogin == null) {
+        PasscodeScreen(
+            onLoginSuccess = {
+                loginSessionStore.save(it)
+                currentLogin = it
+            }
+        )
+        return
+    }
 
     LaunchedEffect(Unit) {
         rentalViewModel.initialize(context)
+    }
+    LaunchedEffect(currentLogin) {
+        currentLogin?.let { rentalViewModel.setCurrentLoginUser(it) }
     }
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
@@ -91,7 +97,14 @@ fun RentHouseAppApp() {
                 }
             }
         ) {
-            Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    TopAppBar(title = {
+                        Text("当前登录：${currentLogin?.loginName} (${currentLogin?.phoneNumber})")
+                    })
+                }
+            ) { innerPadding ->
                 Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                     when (currentDestination) {
                         AppDestinations.ENTRY -> RentalEntryScreen(viewModel = rentalViewModel)

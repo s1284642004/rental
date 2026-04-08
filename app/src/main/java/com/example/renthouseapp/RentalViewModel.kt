@@ -30,6 +30,9 @@ class RentalViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    var currentLoginUser by mutableStateOf<LoginIdentity?>(null)
+        private set
+
     val isEmpty: Boolean
         get() = rentals.isEmpty()
 
@@ -37,6 +40,17 @@ class RentalViewModel : ViewModel() {
     private var repository: CloudRentalRepository? = null
     private var initialized = false
     private var latestLoadRequestId = 0
+
+    fun setCurrentLoginUser(loginIdentity: LoginIdentity) {
+        currentLoginUser = loginIdentity
+        val repo = repository ?: return
+        val loginUser = LoginUser().apply {
+            id = loginIdentity.phoneNumber
+            loginName = loginIdentity.loginName
+            phoneNumber = loginIdentity.phoneNumber
+        }
+        repo.upsertLoginUser(loginUser, onSuccess = {}, onError = {})
+    }
 
 
     fun initialize(context: Context) {
@@ -47,7 +61,10 @@ class RentalViewModel : ViewModel() {
         repository = CloudRentalRepository(cloudDbManager!!)
 
         cloudDbManager?.init(
-            onSuccess = { loadData(userRefresh = false, onSuccess = {}, onError = {}) },
+            onSuccess = {
+                currentLoginUser?.let { setCurrentLoginUser(it) }
+                loadData(userRefresh = false, onSuccess = {}, onError = {})
+            },
             onError = {
                 val msg = it.message ?: "Cloud DB 初始化失败"
                 initError = msg
@@ -172,6 +189,7 @@ class RentalViewModel : ViewModel() {
                     this.paymentFrequency = paymentFrequency
                     isCompleted = false
                 }
+                applyCreateAudit(rental)
 
                 repo.upsertRentalRecord(rental, onSuccess = {
                     val schedules = generateSchedule(rentalId, rentStartDate, monthlyRent, leaseMonths, paymentFrequency)
@@ -242,7 +260,10 @@ class RentalViewModel : ViewModel() {
             leaseMonths = target.leaseMonths
             paymentFrequency = target.paymentFrequency
             isCompleted = target.isCompleted
+            createdBy = target.createdBy
+            createdAt = target.createdAt?.toDate()
         }
+        applyUpdateAudit(record)
         repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
     }
 
@@ -273,6 +294,14 @@ class RentalViewModel : ViewModel() {
         repo.queryPaymentRecordsByRentalId(rentalId, onSuccess = { payments ->
             val payment = payments.firstOrNull { it.id == paymentId } ?: return@queryPaymentRecordsByRentalId
             mutate(payment)
+            if (payment.createdBy.isNullOrBlank()) {
+                payment.createdBy = currentOperator()
+            }
+            if (payment.createdAt == null) {
+                payment.createdAt = Date()
+            }
+            payment.updatedBy = currentOperator()
+            payment.updatedAt = Date()
             repo.upsertPaymentRecord(payment, onSuccess = {
                 syncRentalCompletionFromCloud(rentalId)
             }, onError = { initError = it.message })
@@ -302,7 +331,10 @@ class RentalViewModel : ViewModel() {
                 leaseMonths = rental.leaseMonths
                 paymentFrequency = rental.paymentFrequency
                 isCompleted = shouldCompleted
+                createdBy = rental.createdBy
+                createdAt = rental.createdAt?.toDate()
             }
+            applyUpdateAudit(record)
             repo.upsertRentalRecord(record, onSuccess = { refreshAllData() }, onError = { initError = it.message })
         }, onError = { initError = it.message })
     }
@@ -395,6 +427,7 @@ class RentalViewModel : ViewModel() {
                     dueDate = periodStart.toDate()
                     reminderDate = periodStart.minusDays(15).toDate()
                     isPaid = false
+                    applyCreateAudit(this)
                 }
             )
         }
@@ -415,7 +448,11 @@ class RentalViewModel : ViewModel() {
             leaseMonths = leaseMonths ?: 0,
             paymentFrequency = paymentFrequency ?: 0,
             isCompleted = isCompleted == true,
-            paymentSchedule = payments
+            paymentSchedule = payments,
+            createdBy = createdBy,
+            createdAt = createdAt?.toLocalDate(),
+            updatedBy = updatedBy,
+            updatedAt = updatedAt?.toLocalDate()
         )
     }
 
@@ -432,9 +469,44 @@ class RentalViewModel : ViewModel() {
             isPaid = isPaid == true,
             payee = payee,
             paymentMethod = paymentMethod,
-            receiptDate = receiptDate?.toLocalDate()
+            receiptDate = receiptDate?.toLocalDate(),
+            createdBy = createdBy,
+            createdAt = createdAt?.toLocalDate(),
+            updatedBy = updatedBy,
+            updatedAt = updatedAt?.toLocalDate()
         )
     }
+
+    private fun applyCreateAudit(record: RentalRecord) {
+        val now = Date()
+        val operator = currentOperator()
+        record.createdBy = operator
+        record.createdAt = now
+        record.updatedBy = operator
+        record.updatedAt = now
+    }
+
+    private fun applyUpdateAudit(record: RentalRecord) {
+        if (record.createdBy.isNullOrBlank()) {
+            record.createdBy = currentOperator()
+        }
+        if (record.createdAt == null) {
+            record.createdAt = Date()
+        }
+        record.updatedBy = currentOperator()
+        record.updatedAt = Date()
+    }
+
+    private fun applyCreateAudit(record: PaymentRecord) {
+        val now = Date()
+        val operator = currentOperator()
+        record.createdBy = operator
+        record.createdAt = now
+        record.updatedBy = operator
+        record.updatedAt = now
+    }
+
+    private fun currentOperator(): String = currentLoginUser?.phoneNumber?.ifBlank { "unknown" } ?: "unknown"
 
     private fun LocalDate.toDate(): Date = Date.from(atStartOfDay(ZoneId.systemDefault()).toInstant())
     private fun Date.toLocalDate(): LocalDate = toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
