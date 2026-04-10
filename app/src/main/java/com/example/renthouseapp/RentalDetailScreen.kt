@@ -66,6 +66,18 @@ import java.util.Calendar
 @Composable
 fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick: () -> Unit) {
     val context = LocalContext.current
+    val payeeOptions = remember(viewModel.availablePayees, viewModel.currentLoginUser) {
+        val queriedPayees = viewModel.availablePayees
+        val currentLoginName = viewModel.currentLoginUser?.loginName?.trim().orEmpty()
+        when {
+            queriedPayees.isNotEmpty() && currentLoginName.isNotEmpty() && queriedPayees.contains(currentLoginName) -> queriedPayees
+            queriedPayees.isNotEmpty() && currentLoginName.isNotEmpty() -> listOf(currentLoginName) + queriedPayees
+            queriedPayees.isNotEmpty() -> queriedPayees
+            currentLoginName.isNotEmpty() -> listOf(currentLoginName)
+            else -> emptyList()
+        }
+    }
+    val defaultPayee = payeeOptions.firstOrNull().orEmpty()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showEditAmountDialog by remember { mutableStateOf(false) }
@@ -73,7 +85,7 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
     var newAmountInput by remember { mutableStateOf("") }
     var showReceiptDialog by remember { mutableStateOf(false) }
     var receiptPaymentId by remember { mutableStateOf<String?>(null) }
-    var receiptPayee by remember { mutableStateOf("\u5434\u96ea\u6885") }
+    var receiptPayee by remember { mutableStateOf(defaultPayee) }
     var receiptMethod by remember { mutableStateOf("\u5fae\u4fe1") }
     var receiptDate by remember { mutableStateOf(LocalDate.now()) }
     var showPaymentSuccessDialog by remember { mutableStateOf(false) }
@@ -191,6 +203,9 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                         tenantName = rental.tenantName,
                         onReceiptClick = {
                             receiptPaymentId = payment.id
+                            receiptPayee = payeeOptions.firstOrNull { payee -> payee == viewModel.currentLoginUser?.loginName }
+                                ?: payeeOptions.firstOrNull()
+                                ?: ""
                             showReceiptDialog = true
                         },
                         onRevokeClick = { viewModel.revokePayment(rental.id, payment.id) },
@@ -219,12 +234,16 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             title = { Text("\u786e\u8ba4\u6536\u6b3e\u660e\u7ec6") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SingleChoiceDialogField(
-                        label = "\u6536\u6b3e\u4eba",
-                        options = listOf("\u5434\u96ea\u6885", "\u7f57\u7434\u743c", "\u5434\u5e94\u6839"),
-                        selectedOption = receiptPayee,
-                        onOptionSelected = { receiptPayee = it }
-                    )
+                    if (payeeOptions.isEmpty()) {
+                        Text("\u672a\u67e5\u8be2\u5230\u6536\u6b3e\u4eba\uff0c\u8bf7\u5148\u68c0\u67e5 loginUser \u6570\u636e")
+                    } else {
+                        SingleChoiceDialogField(
+                            label = "\u6536\u6b3e\u4eba",
+                            options = payeeOptions,
+                            selectedOption = receiptPayee,
+                            onOptionSelected = { receiptPayee = it }
+                        )
+                    }
                     SingleChoiceDialogField(
                         label = "\u6536\u6b3e\u65b9\u5f0f",
                         options = listOf("\u5fae\u4fe1", "\u94f6\u884c\u8f6c\u8d26", "\u652f\u4ed8\u5b9d", "\u73b0\u91d1"),
@@ -235,19 +254,22 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    viewModel.confirmPayment(
-                        rental.id,
-                        receiptPaymentId!!,
-                        receiptPayee,
-                        receiptMethod,
-                        receiptDate,
-                        onSuccess = {
-                            showReceiptDialog = false
-                            showPaymentSuccessDialog = true
-                        }
-                    )
-                }) {
+                Button(
+                    enabled = receiptPayee.isNotBlank(),
+                    onClick = {
+                        viewModel.confirmPayment(
+                            rental.id,
+                            receiptPaymentId!!,
+                            receiptPayee,
+                            receiptMethod,
+                            receiptDate,
+                            onSuccess = {
+                                showReceiptDialog = false
+                                showPaymentSuccessDialog = true
+                            }
+                        )
+                    }
+                ) {
                     Text("\u786e\u8ba4\u5165\u8d26")
                 }
             },
