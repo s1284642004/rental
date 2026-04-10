@@ -22,6 +22,9 @@ class RentalViewModel : ViewModel() {
     private val _availableProperties = mutableStateListOf<String>()
     val availableProperties: List<String> get() = _availableProperties
 
+    private val _availablePayees = mutableStateListOf<String>()
+    val availablePayees: List<String> get() = _availablePayees
+
     var initError by mutableStateOf<String?>(null)
         private set
 
@@ -71,7 +74,10 @@ class RentalViewModel : ViewModel() {
         repository = CloudRentalRepository(cloudDbManager!!)
 
         cloudDbManager?.init(
-            onSuccess = { loadData(userRefresh = false, onSuccess = {}, onError = {}) },
+            onSuccess = {
+                refreshPayees()
+                loadData(userRefresh = false, onSuccess = {}, onError = {})
+            },
             onError = {
                 val msg = it.message ?: "Cloud DB 初始化失败"
                 initError = msg
@@ -157,6 +163,7 @@ class RentalViewModel : ViewModel() {
     }
 
     fun refreshAllData() {
+        refreshPayees()
         loadData(userRefresh = false, onSuccess = {}, onError = {})
     }
 
@@ -164,7 +171,27 @@ class RentalViewModel : ViewModel() {
         onSuccess: (Boolean) -> Unit,
         onError: (String) -> Unit
     ) {
+        refreshPayees()
         loadData(userRefresh = true, onSuccess = onSuccess, onError = onError)
+    }
+
+    private fun refreshPayees() {
+        val repo = repository ?: return
+        repo.queryAllLoginUsers(
+            onSuccess = { loginUsers ->
+                _availablePayees.clear()
+                _availablePayees.addAll(
+                    loginUsers
+                        .mapNotNull { it.loginName?.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinct()
+                        .sorted()
+                )
+            },
+            onError = { error ->
+                initError = error.message
+            }
+        )
     }
 
     private fun loadData(

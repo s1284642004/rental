@@ -29,6 +29,10 @@ class CloudRentalRepository(private val cloudDbManager: CloudDbManager) {
         cloudDbManager.queryLoginUserByPhoneNumber(phoneNumber, onSuccess, onError)
     }
 
+    fun queryAllLoginUsers(onSuccess: (List<LoginUser>) -> Unit, onError: (Throwable) -> Unit) {
+        cloudDbManager.queryAllLoginUsers(onSuccess, onError)
+    }
+
     fun upsertRentalRecord(record: RentalRecord, onSuccess: (Int) -> Unit, onError: (Throwable) -> Unit) {
         cloudDbManager.insertOrUpdateRentalRecord(record, onSuccess, onError)
     }

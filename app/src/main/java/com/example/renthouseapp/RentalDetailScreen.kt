@@ -388,7 +388,6 @@ fun PaymentRecordCard(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val containerColor = if (payment.isPaid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = containerColor),
@@ -508,7 +507,6 @@ fun CollectionPaymentCard(
     val clipboardManager = LocalClipboardManager.current
     val payment = item.payment
     val containerColor = if (payment.isPaid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = containerColor),

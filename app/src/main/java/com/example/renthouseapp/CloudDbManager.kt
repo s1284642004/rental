@@ -196,6 +196,34 @@ class CloudDbManager(private val context: Context) {
             .addOnFailureListener { e -> onError(e) }
     }
 
+    fun queryAllLoginUsers(
+        onSuccess: (List<LoginUser>) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val dbZone = zone ?: run {
+            onError(IllegalStateException("Cloud DB zone not opened"))
+            return
+        }
+
+        val query = CloudDBZoneQuery.where(LoginUser::class.java)
+        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
+            .addOnSuccessListener { snapshot ->
+                try {
+                    val list = mutableListOf<LoginUser>()
+                    val cursor = snapshot.snapshotObjects
+                    while (cursor.hasNext()) {
+                        cursor.next()?.let { list.add(it) }
+                    }
+                    onSuccess(list)
+                } catch (e: Exception) {
+                    onError(e)
+                } finally {
+                    snapshot.release()
+                }
+            }
+            .addOnFailureListener { e -> onError(e) }
+    }
+
     fun queryRentalRecordById(
         rentalId: String,
         onSuccess: (RentalRecord?) -> Unit,
