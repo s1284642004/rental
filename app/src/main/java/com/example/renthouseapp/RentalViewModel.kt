@@ -8,12 +8,14 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.UUID
 
 class RentalViewModel : ViewModel() {
     companion object {
         private const val UNKNOWN_OPERATOR = "unknown"
+        private val ID_DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
     }
 
     private val _rentals = mutableStateListOf<UiRental>()
@@ -296,52 +298,68 @@ class RentalViewModel : ViewModel() {
         ensureProperty(
             propertyName = propertyName,
             onResolved = { property ->
-                val rentalId = UUID.randomUUID().toString()
-                val rental = RentalRecord().apply {
-                    id = rentalId
-                    propertyId = property.id
-                    this.propertyName = property.propertyName
-                    this.tenantName = tenantName
-                    this.tenantPhone = tenantPhone
-                    this.tenantIdCard = tenantIdCard
-                    this.contractDate = contractDate.toDate()
-                    this.rentStartDate = rentStartDate.toDate()
-                    this.monthlyRent = monthlyRent
-                    this.leaseMonths = leaseMonths
-                    this.paymentFrequency = paymentFrequency
-                    isCompleted = false
-                }
-                applyCreateAudit(rental)
+                val rentalId = buildRentalRecordId(
+                    propertyId = property.id,
+                    contractDate = contractDate
+                )
+                val schedules = generateSchedule(
+                    propertyId = property.id,
+                    contractDate = contractDate,
+                    start = rentStartDate,
+                    rent = monthlyRent,
+                    months = leaseMonths,
+                    freq = paymentFrequency
+                )
 
-                repo.upsertRentalRecord(
-                    rental,
-                    onSuccess = {
-                        val schedules = generateSchedule(
-                            rentalId = rentalId,
-                            start = rentStartDate,
-                            rent = monthlyRent,
-                            months = leaseMonths,
-                            freq = paymentFrequency
-                        )
-                        upsertSchedules(
-                            repo = repo,
-                            records = schedules,
-                            index = 0,
-                            onDone = {
-                                property.isAvailable = false
-                                repo.upsertProperty(
-                                    property,
-                                    onSuccess = {
-                                        refreshAllData()
-                                        onSuccess()
+                repo.queryRentalRecordById(
+                    rentalId,
+                    onSuccess = { existingRecord ->
+                        if (existingRecord != null) {
+                            onError("已存在相同房源和签约日期的合同，无法重复创建")
+                            return@queryRentalRecordById
+                        }
+
+                        val rental = RentalRecord().apply {
+                            id = rentalId
+                            propertyId = property.id
+                            this.propertyName = property.propertyName
+                            this.tenantName = tenantName
+                            this.tenantPhone = tenantPhone
+                            this.tenantIdCard = tenantIdCard
+                            this.contractDate = contractDate.toDate()
+                            this.rentStartDate = rentStartDate.toDate()
+                            this.monthlyRent = monthlyRent
+                            this.leaseMonths = leaseMonths
+                            this.paymentFrequency = paymentFrequency
+                            isCompleted = false
+                        }
+                        applyCreateAudit(rental)
+
+                        repo.upsertRentalRecord(
+                            rental,
+                            onSuccess = {
+                                upsertSchedules(
+                                    repo = repo,
+                                    records = schedules,
+                                    index = 0,
+                                    onDone = {
+                                        property.isAvailable = false
+                                        repo.upsertProperty(
+                                            property,
+                                            onSuccess = {
+                                                refreshAllData()
+                                                onSuccess()
+                                            },
+                                            onError = { onError(it.message ?: "房源写入失败") }
+                                        )
                                     },
-                                    onError = { onError(it.message ?: "房源写入失败") }
+                                    onError = { onError(it.message ?: "账单写入失败") }
                                 )
                             },
-                            onError = { onError(it.message ?: "账单写入失败") }
+                            onError = { onError(it.message ?: "合同写入失败") }
                         )
                     },
-                    onError = { onError(it.message ?: "合同写入失败") }
+                    onError = { onError(it.message ?: "合同查询失败") }
                 )
             },
             onError = onError
@@ -574,7 +592,8 @@ class RentalViewModel : ViewModel() {
     }
 
     private fun generateSchedule(
-        rentalId: String,
+        propertyId: String,
+        contractDate: LocalDate,
         start: LocalDate,
         rent: Int,
         months: Int,
@@ -584,15 +603,21 @@ class RentalViewModel : ViewModel() {
         val actualFreq = if (freq == 0) months else freq
         val totalPeriods = if (actualFreq > 0) months / actualFreq else 1
         val amountPerPeriod = rent * actualFreq
+        val rentalId = buildRentalRecordId(propertyId, contractDate)
 
         for (i in 0 until totalPeriods) {
+            val periodNumber = i + 1
             val periodStart = start.plusMonths((i * actualFreq).toLong())
-            val periodEnd = start.plusMonths(((i + 1) * actualFreq).toLong()).minusDays(1)
+            val periodEnd = start.plusMonths((periodNumber * actualFreq).toLong()).minusDays(1)
             schedule.add(
                 PaymentRecord().apply {
-                    id = UUID.randomUUID().toString()
+                    id = buildPaymentRecordId(
+                        propertyId = propertyId,
+                        contractDate = contractDate,
+                        periodNumber = periodNumber
+                    )
                     this.rentalId = rentalId
-                    periodNumber = i + 1
+                    this.periodNumber = periodNumber
                     amount = amountPerPeriod
                     periodStartDate = periodStart.toDate()
                     periodEndDate = periodEnd.toDate()
@@ -604,6 +629,21 @@ class RentalViewModel : ViewModel() {
             )
         }
         return schedule
+    }
+
+    private fun buildRentalRecordId(
+        propertyId: String,
+        contractDate: LocalDate
+    ): String {
+        return "${propertyId.trim()}-${contractDate.format(ID_DATE_FORMATTER)}"
+    }
+
+    private fun buildPaymentRecordId(
+        propertyId: String,
+        contractDate: LocalDate,
+        periodNumber: Int
+    ): String {
+        return "PAY-${propertyId.trim()}-${contractDate.format(ID_DATE_FORMATTER)}-$periodNumber"
     }
 
     private fun applyCreateAudit(record: RentalRecord) {

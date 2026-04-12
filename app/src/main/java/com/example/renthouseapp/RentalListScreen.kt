@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.renthouseapp.ui.theme.CalendarGreen
+import com.example.renthouseapp.ui.theme.White
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -85,7 +87,10 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CalendarGreen,
+                    contentColor = White
+                )
             ) {
                 Icon(Icons.Default.DateRange, contentDescription = "同步", modifier = Modifier.padding(end = 8.dp))
                 Text("一键同步至日历", fontWeight = FontWeight.Bold)
