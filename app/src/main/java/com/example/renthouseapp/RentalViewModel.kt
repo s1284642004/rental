@@ -90,13 +90,14 @@ class RentalViewModel : ViewModel() {
         )
     }
 
-    fun verifyLoginCode(loginCode: String) {
+    fun verifyLoginCredentials(loginCode: String, password: String) {
         val normalizedCode = loginCode.trim()
+        val normalizedPassword = password.trim()
         verifiedLoginName = null
         verifiedLoginCode = null
         loginValidationMessage = null
 
-        if (normalizedCode.length != 11) return
+        if (normalizedCode.length != 11 || normalizedPassword.isBlank()) return
 
         val repo = repository ?: run {
             loginValidationMessage = "Cloud DB 尚未初始化"
@@ -110,6 +111,8 @@ class RentalViewModel : ViewModel() {
                 isLoggingIn = false
                 if (loginUser == null) {
                     loginValidationMessage = "未找到对应登录人"
+                } else if (loginUser.passWord != normalizedPassword) {
+                    loginValidationMessage = "登录码或密码错误"
                 } else {
                     verifiedLoginCode = normalizedCode
                     verifiedLoginName = loginUser.loginName
@@ -122,19 +125,25 @@ class RentalViewModel : ViewModel() {
         )
     }
 
-    fun loginWithVerifiedCode(
+    fun loginWithVerifiedCredentials(
         loginCode: String,
+        password: String,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
         val normalizedCode = loginCode.trim()
+        val normalizedPassword = password.trim()
         val loginName = verifiedLoginName
         if (normalizedCode.isBlank()) {
             onError("请输入登录码")
             return
         }
+        if (normalizedPassword.isBlank()) {
+            onError("请输入密码")
+            return
+        }
         if (verifiedLoginCode != normalizedCode || loginName.isNullOrBlank()) {
-            onError("请先输入有效登录码")
+            onError("请先输入正确的登录码和密码")
             return
         }
 
@@ -175,6 +184,11 @@ class RentalViewModel : ViewModel() {
     ) {
         refreshPayees()
         loadData(userRefresh = true, onSuccess = onSuccess, onError = onError)
+    }
+
+    fun refreshFromTabSwitch() {
+        refreshPayees()
+        loadData(userRefresh = true, onSuccess = {}, onError = {})
     }
 
     private fun refreshPayees() {

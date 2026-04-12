@@ -15,7 +15,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType RentalRecord.
  *
- * @since 2026-04-08
+ * @since 2026-04-12
  */
 @PrimaryKeys({"id"})
 public final class RentalRecord extends CloudDBZoneObject {

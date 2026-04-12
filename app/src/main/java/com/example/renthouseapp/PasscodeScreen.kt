@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -28,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
@@ -36,20 +40,22 @@ fun PasscodeScreen(
     isLoading: Boolean,
     verifiedLoginName: String?,
     validationMessage: String?,
-    onVerifyCode: (String) -> Unit,
-    onLogin: (String) -> Unit
+    onVerifyCredentials: (String, String) -> Unit,
+    onLogin: (String, String) -> Unit
 ) {
     var loginCode by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(loginCode) {
+    LaunchedEffect(loginCode, password) {
         localError = null
-        if (loginCode.length != 11) {
-            onVerifyCode(loginCode)
+        if (loginCode.length != 11 || password.isBlank()) {
+            onVerifyCredentials(loginCode, password)
             return@LaunchedEffect
         }
         delay(300)
-        onVerifyCode(loginCode)
+        onVerifyCredentials(loginCode, password)
     }
 
     Surface(
@@ -79,7 +85,7 @@ fun PasscodeScreen(
             )
 
             Text(
-                text = "\u8bf7\u8f93\u5165\u767b\u5f55\u7801",
+                text = "\u8bf7\u8f93\u5165\u767b\u5f55\u7801\u548c\u5bc6\u7801",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
@@ -95,6 +101,30 @@ fun PasscodeScreen(
                 label = { Text("\u8bf7\u8f93\u5165\u767b\u5f55\u7801") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("\u8bf7\u8f93\u5165\u5bc6\u7801") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                visualTransformation = if (passwordVisible) {
+                    androidx.compose.ui.text.input.VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (passwordVisible) "\u9690\u85cf\u5bc6\u7801" else "\u663e\u793a\u5bc6\u7801"
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -133,9 +163,9 @@ fun PasscodeScreen(
             Button(
                 onClick = {
                     if (verifiedLoginName.isNullOrBlank()) {
-                        localError = "\u8bf7\u5148\u8f93\u5165\u6709\u6548\u767b\u5f55\u7801"
+                        localError = "\u8bf7\u5148\u8f93\u5165\u6b63\u786e\u7684\u767b\u5f55\u7801\u548c\u5bc6\u7801"
                     } else {
-                        onLogin(loginCode)
+                        onLogin(loginCode, password)
                     }
                 },
                 enabled = verifiedLoginName != null && !isLoading,

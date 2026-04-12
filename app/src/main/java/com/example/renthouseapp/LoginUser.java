@@ -13,7 +13,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType LoginUser.
  *
- * @since 2026-04-08
+ * @since 2026-04-12
  */
 @PrimaryKeys({"id"})
 public final class LoginUser extends CloudDBZoneObject {
@@ -22,6 +22,8 @@ public final class LoginUser extends CloudDBZoneObject {
     private String loginName;
 
     private String phoneNumber;
+
+    private String passWord;
 
     public LoginUser() {
         super(LoginUser.class);
@@ -49,6 +51,14 @@ public final class LoginUser extends CloudDBZoneObject {
 
     public String getPhoneNumber() {
         return phoneNumber;
+    }
+
+    public void setPassWord(String passWord) {
+        this.passWord = passWord;
+    }
+
+    public String getPassWord() {
+        return passWord;
     }
 
 }

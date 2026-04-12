@@ -62,6 +62,8 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 
+private const val DEFAULT_PAYEE_NAME = "罗琪琛"
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick: () -> Unit) {
@@ -77,7 +79,9 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             else -> emptyList()
         }
     }
-    val defaultPayee = payeeOptions.firstOrNull().orEmpty()
+    val defaultPayee = payeeOptions.firstOrNull { it == DEFAULT_PAYEE_NAME }
+        ?: payeeOptions.firstOrNull()
+        ?: DEFAULT_PAYEE_NAME
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showEditAmountDialog by remember { mutableStateOf(false) }
@@ -203,9 +207,9 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                         tenantName = rental.tenantName,
                         onReceiptClick = {
                             receiptPaymentId = payment.id
-                            receiptPayee = payeeOptions.firstOrNull { payee -> payee == viewModel.currentLoginUser?.loginName }
+                            receiptPayee = payeeOptions.firstOrNull { payee -> payee == DEFAULT_PAYEE_NAME }
                                 ?: payeeOptions.firstOrNull()
-                                ?: ""
+                                ?: DEFAULT_PAYEE_NAME
                             showReceiptDialog = true
                         },
                         onRevokeClick = { viewModel.revokePayment(rental.id, payment.id) },

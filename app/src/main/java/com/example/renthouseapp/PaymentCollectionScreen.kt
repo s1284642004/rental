@@ -38,6 +38,8 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
+private const val DEFAULT_PAYEE_NAME = "罗琪琛"
+
 data class UiCollectionItem(
     val rentalId: String,
     val propertyName: String,
@@ -63,7 +65,9 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
             else -> emptyList()
         }
     }
-    val defaultPayee = payeeOptions.firstOrNull().orEmpty()
+    val defaultPayee = payeeOptions.firstOrNull { it == DEFAULT_PAYEE_NAME }
+        ?: payeeOptions.firstOrNull()
+        ?: DEFAULT_PAYEE_NAME
 
     val pendingItems = viewModel.rentals
         .flatMap { rental ->
@@ -150,9 +154,9 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
                                 item = item,
                                 onReceiptClick = {
                                     receiptItem = item
-                                    receiptPayee = payeeOptions.firstOrNull { payee -> payee == viewModel.currentLoginUser?.loginName }
+                                    receiptPayee = payeeOptions.firstOrNull { payee -> payee == DEFAULT_PAYEE_NAME }
                                         ?: payeeOptions.firstOrNull()
-                                        ?: ""
+                                        ?: DEFAULT_PAYEE_NAME
                                     showReceiptDialog = true
                                 },
                                 onRevokeClick = { viewModel.revokePayment(item.rentalId, item.payment.id) },

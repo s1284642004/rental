@@ -14,7 +14,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType Property.
  *
- * @since 2026-04-08
+ * @since 2026-04-12
  */
 @PrimaryKeys({"id"})
 public final class Property extends CloudDBZoneObject {

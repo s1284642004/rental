@@ -59,10 +59,13 @@ fun RentHouseAppApp() {
             isLoading = rentalViewModel.isLoggingIn,
             verifiedLoginName = rentalViewModel.verifiedLoginName,
             validationMessage = rentalViewModel.loginValidationMessage,
-            onVerifyCode = { rentalViewModel.verifyLoginCode(it) },
-            onLogin = { loginCode ->
-                rentalViewModel.loginWithVerifiedCode(
+            onVerifyCredentials = { loginCode, password ->
+                rentalViewModel.verifyLoginCredentials(loginCode, password)
+            },
+            onLogin = { loginCode, password ->
+                rentalViewModel.loginWithVerifiedCredentials(
                     loginCode = loginCode,
+                    password = password,
                     onSuccess = {},
                     onError = {}
                 )
@@ -74,6 +77,10 @@ fun RentHouseAppApp() {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
     val selectedRental = rentalViewModel.rentals.find { it.id == selectedRentalId }
+
+    LaunchedEffect(currentDestination) {
+        rentalViewModel.refreshFromTabSwitch()
+    }
 
     BackHandler(enabled = selectedRentalId != null || currentDestination != AppDestinations.LIST) {
         if (selectedRentalId != null) {
