@@ -54,10 +54,18 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     private Date updatedAt;
 
+    private Integer depositAmount;
+
+    @DefaultValue(stringValue = "未支付")
+    private String depositStatus;
+
+    private Integer propertyFee;
+
     public RentalRecord() {
         super(RentalRecord.class);
         this.tenantPhone = "";
         this.isCompleted = false;
+        this.depositStatus = "未支付";
     }
 
     public void setId(String id) {
@@ -186,6 +194,30 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     public Date getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void setDepositAmount(Integer depositAmount) {
+        this.depositAmount = depositAmount;
+    }
+
+    public Integer getDepositAmount() {
+        return depositAmount;
+    }
+
+    public void setDepositStatus(String depositStatus) {
+        this.depositStatus = depositStatus;
+    }
+
+    public String getDepositStatus() {
+        return depositStatus;
+    }
+
+    public void setPropertyFee(Integer propertyFee) {
+        this.propertyFee = propertyFee;
+    }
+
+    public Integer getPropertyFee() {
+        return propertyFee;
     }
 
 }

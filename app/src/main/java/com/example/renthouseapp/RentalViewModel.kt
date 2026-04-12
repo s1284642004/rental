@@ -61,6 +61,7 @@ class RentalViewModel : ViewModel() {
     private var repository: CloudRentalRepository? = null
     private var sessionStore: LoginSessionStore? = null
     private var initialized = false
+    private var isCloudDbReady = false
     private var latestLoadRequestId = 0
 
     fun initialize(context: Context) {
@@ -74,13 +75,16 @@ class RentalViewModel : ViewModel() {
 
         cloudDbManager = CloudDbManager(context.applicationContext)
         repository = CloudRentalRepository(cloudDbManager!!)
+        isCloudDbReady = false
 
         cloudDbManager?.init(
             onSuccess = {
+                isCloudDbReady = true
                 refreshPayees()
                 loadData(userRefresh = false, onSuccess = {}, onError = {})
             },
             onError = {
+                isCloudDbReady = false
                 val msg = it.message ?: "Cloud DB 初始化失败"
                 initError = msg
                 errorMessage = msg
@@ -98,6 +102,10 @@ class RentalViewModel : ViewModel() {
         loginValidationMessage = null
 
         if (normalizedCode.length != 11 || normalizedPassword.isBlank()) return
+        if (!isCloudDbReady) {
+            loginValidationMessage = "Cloud DB 尚未就绪，请稍后再试"
+            return
+        }
 
         val repo = repository ?: run {
             loginValidationMessage = "Cloud DB 尚未初始化"
@@ -174,6 +182,7 @@ class RentalViewModel : ViewModel() {
     }
 
     fun refreshAllData() {
+        if (!isCloudDbReady) return
         refreshPayees()
         loadData(userRefresh = false, onSuccess = {}, onError = {})
     }
@@ -182,11 +191,16 @@ class RentalViewModel : ViewModel() {
         onSuccess: (Boolean) -> Unit,
         onError: (String) -> Unit
     ) {
+        if (!isCloudDbReady) {
+            onError("Cloud DB 尚未就绪")
+            return
+        }
         refreshPayees()
         loadData(userRefresh = true, onSuccess = onSuccess, onError = onError)
     }
 
     fun refreshFromTabSwitch() {
+        if (!isCloudDbReady) return
         refreshPayees()
         loadData(userRefresh = true, onSuccess = {}, onError = {})
     }
@@ -302,6 +316,9 @@ class RentalViewModel : ViewModel() {
         contractDate: LocalDate,
         rentStartDate: LocalDate,
         monthlyRent: Int,
+        propertyFee: Int,
+        depositAmount: Int,
+        depositStatus: String,
         leaseMonths: Int,
         paymentFrequency: Int,
         onSuccess: () -> Unit,
@@ -321,6 +338,7 @@ class RentalViewModel : ViewModel() {
                     contractDate = contractDate,
                     start = rentStartDate,
                     rent = monthlyRent,
+                    propertyFee = propertyFee,
                     months = leaseMonths,
                     freq = paymentFrequency
                 )
@@ -343,6 +361,9 @@ class RentalViewModel : ViewModel() {
                             this.contractDate = contractDate.toDate()
                             this.rentStartDate = rentStartDate.toDate()
                             this.monthlyRent = monthlyRent
+                            this.propertyFee = propertyFee
+                            this.depositAmount = depositAmount
+                            this.depositStatus = depositStatus
                             this.leaseMonths = leaseMonths
                             this.paymentFrequency = paymentFrequency
                             isCompleted = false
@@ -452,8 +473,79 @@ class RentalViewModel : ViewModel() {
         )
     }
 
+    fun updateRentalContractInfo(
+        rentalId: String,
+        newName: String,
+        newPhone: String,
+        newIdCard: String,
+        newMonthlyRent: Int,
+        newPropertyFee: Int,
+        newDepositAmount: Int,
+        newDepositStatus: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val repo = repository ?: return
+        repo.queryRentalRecordById(
+            rentalId,
+            onSuccess = { record ->
+                val existing = record ?: return@queryRentalRecordById
+                existing.tenantName = newName
+                existing.tenantPhone = newPhone
+                existing.tenantIdCard = newIdCard
+                existing.monthlyRent = newMonthlyRent
+                existing.propertyFee = newPropertyFee
+                existing.depositAmount = newDepositAmount
+                existing.depositStatus = newDepositStatus
+                applyUpdateAudit(existing)
+
+                repo.queryPaymentRecordsByRentalId(
+                    rentalId,
+                    onSuccess = { payments ->
+                        val updatedUnpaidPayments = payments
+                            .filter { it.isPaid != true }
+                            .map { payment ->
+                                payment.apply {
+                                    val monthsPerPeriod = resolveMonthsPerPeriod(
+                                        paymentFrequency = existing.paymentFrequency ?: 0,
+                                        leaseMonths = existing.leaseMonths ?: 0
+                                    )
+                                    rentAmount = newMonthlyRent * monthsPerPeriod
+                                    propertyFeeAmount = newPropertyFee * monthsPerPeriod
+                                    amount = (rentAmount ?: 0) + (propertyFeeAmount ?: 0)
+                                    applyUpdateAudit(this)
+                                }
+                            }
+
+                        repo.upsertRentalRecord(
+                            existing,
+                            onSuccess = {
+                                upsertSchedules(
+                                    repo = repo,
+                                    records = updatedUnpaidPayments,
+                                    index = 0,
+                                    onDone = {
+                                        refreshAllData()
+                                        onSuccess()
+                                    },
+                                    onError = { initError = it.message }
+                                )
+                            },
+                            onError = { initError = it.message }
+                        )
+                    },
+                    onError = { initError = it.message }
+                )
+            },
+            onError = { initError = it.message }
+        )
+    }
+
     fun updatePaymentAmount(rentalId: String, paymentId: String, newAmount: Int) {
-        updatePayment(rentalId, paymentId, onSuccess = {}) { payment -> payment.amount = newAmount }
+        updatePayment(rentalId, paymentId, onSuccess = {}) { payment ->
+            val propertyFeeAmount = payment.propertyFeeAmount ?: 0
+            payment.amount = newAmount
+            payment.rentAmount = (newAmount - propertyFeeAmount).coerceAtLeast(0)
+        }
     }
 
     fun confirmPayment(
@@ -610,13 +702,16 @@ class RentalViewModel : ViewModel() {
         contractDate: LocalDate,
         start: LocalDate,
         rent: Int,
+        propertyFee: Int,
         months: Int,
         freq: Int
     ): List<PaymentRecord> {
         val schedule = mutableListOf<PaymentRecord>()
-        val actualFreq = if (freq == 0) months else freq
+        val actualFreq = resolveMonthsPerPeriod(freq, months)
         val totalPeriods = if (actualFreq > 0) months / actualFreq else 1
-        val amountPerPeriod = rent * actualFreq
+        val rentAmountPerPeriod = rent * actualFreq
+        val propertyFeeAmountPerPeriod = propertyFee * actualFreq
+        val amountPerPeriod = rentAmountPerPeriod + propertyFeeAmountPerPeriod
         val rentalId = buildRentalRecordId(propertyId, contractDate)
 
         for (i in 0 until totalPeriods) {
@@ -632,6 +727,8 @@ class RentalViewModel : ViewModel() {
                     )
                     this.rentalId = rentalId
                     this.periodNumber = periodNumber
+                    this.rentAmount = rentAmountPerPeriod
+                    this.propertyFeeAmount = propertyFeeAmountPerPeriod
                     amount = amountPerPeriod
                     periodStartDate = periodStart.toDate()
                     periodEndDate = periodEnd.toDate()
@@ -643,6 +740,10 @@ class RentalViewModel : ViewModel() {
             )
         }
         return schedule
+    }
+
+    private fun resolveMonthsPerPeriod(paymentFrequency: Int, leaseMonths: Int): Int {
+        return if (paymentFrequency == 0) leaseMonths else paymentFrequency
     }
 
     private fun buildRentalRecordId(
@@ -719,6 +820,9 @@ class RentalViewModel : ViewModel() {
             contractDate = contractDate?.toLocalDate() ?: LocalDate.now(),
             rentStartDate = rentStartDate?.toLocalDate() ?: LocalDate.now(),
             monthlyRent = monthlyRent ?: 0,
+            propertyFee = propertyFee ?: 0,
+            depositAmount = depositAmount ?: 0,
+            depositStatus = depositStatus.orEmpty().ifBlank { "\u672a\u652f\u4ed8" },
             leaseMonths = leaseMonths ?: 0,
             paymentFrequency = paymentFrequency ?: 0,
             isCompleted = isCompleted == true,
@@ -736,6 +840,8 @@ class RentalViewModel : ViewModel() {
             rentalId = rentalId.orEmpty(),
             periodNumber = periodNumber ?: 0,
             amount = amount ?: 0,
+            rentAmount = rentAmount ?: (amount ?: 0),
+            propertyFeeAmount = propertyFeeAmount ?: 0,
             periodStartDate = periodStartDate?.toLocalDate() ?: LocalDate.now(),
             periodEndDate = periodEndDate?.toLocalDate() ?: LocalDate.now(),
             dueDate = dueDate?.toLocalDate() ?: LocalDate.now(),

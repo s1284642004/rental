@@ -51,6 +51,10 @@ public final class PaymentRecord extends CloudDBZoneObject {
 
     private Date updatedAt;
 
+    private Integer rentAmount;
+
+    private Integer propertyFeeAmount;
+
     public PaymentRecord() {
         super(PaymentRecord.class);
         this.isPaid = false;
@@ -182,6 +186,22 @@ public final class PaymentRecord extends CloudDBZoneObject {
 
     public Date getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void setRentAmount(Integer rentAmount) {
+        this.rentAmount = rentAmount;
+    }
+
+    public Integer getRentAmount() {
+        return rentAmount;
+    }
+
+    public void setPropertyFeeAmount(Integer propertyFeeAmount) {
+        this.propertyFeeAmount = propertyFeeAmount;
+    }
+
+    public Integer getPropertyFeeAmount() {
+        return propertyFeeAmount;
     }
 
 }

@@ -8,6 +8,8 @@ data class UiPaymentRecord(
     val rentalId: String,
     val periodNumber: Int,
     val amount: Int,
+    val rentAmount: Int,
+    val propertyFeeAmount: Int,
     val periodStartDate: LocalDate,
     val periodEndDate: LocalDate,
     val dueDate: LocalDate,
@@ -29,6 +31,9 @@ data class UiRental(
     val contractDate: LocalDate,
     val rentStartDate: LocalDate,
     val monthlyRent: Int,
+    val propertyFee: Int,
+    val depositAmount: Int,
+    val depositStatus: String,
     val leaseMonths: Int,
     val paymentFrequency: Int,
     val isCompleted: Boolean,
@@ -38,7 +43,7 @@ data class UiRental(
     val updatedAt: LocalDateTime?,
     val paymentSchedule: List<UiPaymentRecord>
 ) {
-    val totalAmount: Int get() = monthlyRent * paymentFrequency
+    val totalAmount: Int get() = paymentSchedule.firstOrNull { !it.isPaid }?.amount ?: (monthlyRent + propertyFee)
     val nextPaymentDate: LocalDate? get() = paymentSchedule.firstOrNull { !it.isPaid }?.dueDate
     val reminderDate: LocalDate? get() = nextPaymentDate?.minusDays(15)
 }
@@ -49,6 +54,9 @@ data class EntryFormDraft(
     val tenantPhone: String = "",
     val tenantIdCard: String = "",
     val monthlyRent: String = "",
+    val propertyFee: String = "",
+    val depositAmount: String = "",
+    val depositStatus: String = "\u672a\u652f\u4ed8",
     val leaseMonths: String = "12",
     val rentStartDateText: String = "",
     val contractDateText: String = "",

@@ -141,7 +141,7 @@ fun RentalCard(rental: UiRental, onClick: () -> Unit) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(text = rental.propertyName, style = MaterialTheme.typography.titleLarge, color = if (rental.isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface)
                 if (rental.isCompleted) Badge(containerColor = MaterialTheme.colorScheme.secondary) { Text("已完成", modifier = Modifier.padding(4.dp)) }
-                else Text(text = "￥${rental.monthlyRent}/月", color = MaterialTheme.colorScheme.primary)
+                else Text(text = "￥${rental.monthlyRent + rental.propertyFee}/月", color = MaterialTheme.colorScheme.primary)
             }
             Text(text = "租客: ${rental.tenantName} (${rental.tenantPhone})")
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

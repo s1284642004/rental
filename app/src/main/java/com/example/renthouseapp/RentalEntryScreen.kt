@@ -64,6 +64,9 @@ fun RentalEntryScreen(
     val tenantPhone = draft.tenantPhone
     val tenantIdCard = draft.tenantIdCard
     val monthlyRent = draft.monthlyRent
+    val propertyFee = draft.propertyFee
+    val depositAmount = draft.depositAmount
+    val depositStatus = draft.depositStatus
     val leaseMonths = draft.leaseMonths
     val rentStartDateText = draft.rentStartDateText.ifBlank { LocalDate.now().toString() }
     val contractDateText = draft.contractDateText.ifBlank { LocalDate.now().toString() }
@@ -79,6 +82,7 @@ fun RentalEntryScreen(
     )
     val selectedFreqValue = draft.paymentFrequencyValue
     val selectedFreq = paymentOptions.firstOrNull { it.first == selectedFreqValue } ?: paymentOptions[0]
+    val depositStatusOptions = listOf("未支付", "已支付", "已退还", "已扣除")
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
@@ -178,11 +182,38 @@ fun RentalEntryScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                     OutlinedTextField(
-                        value = leaseMonths,
-                        onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(leaseMonths = it) } },
-                        label = { Text("\u5468\u671f(\u6708) *") },
+                        value = propertyFee,
+                        onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(propertyFee = it) } },
+                        label = { Text("\u7269\u4e1a\u8d39(\u5143) *") },
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = leaseMonths,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(leaseMonths = it) } },
+                    label = { Text("\u5468\u671f(\u6708) *") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = depositAmount,
+                        onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(depositAmount = it) } },
+                        label = { Text("\u62bc\u91d1(\u5143)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    SingleChoiceDialogField(
+                        label = "\u62bc\u91d1\u72b6\u6001",
+                        options = depositStatusOptions,
+                        selectedOption = depositStatus,
+                        onOptionSelected = { selected ->
+                            viewModel.updateEntryFormDraft { draftState -> draftState.copy(depositStatus = selected) }
+                        },
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
@@ -215,14 +246,20 @@ fun RentalEntryScreen(
                 Button(
                     onClick = {
                         val rentInt = monthlyRent.toIntOrNull()
+                        val propertyFeeInt = propertyFee.toIntOrNull()
+                        val depositInt = depositAmount.toIntOrNull() ?: 0
                         val leaseInt = leaseMonths.toIntOrNull()
 
                         if (viewModel.availableProperties.isEmpty()) {
                             errorMessage = viewModel.initError ?: "\u6682\u65e0\u53ef\u7528\u623f\u6e90\uff0c\u8bf7\u5148\u786e\u8ba4 Cloud DB \u521d\u59cb\u5316"
                             return@Button
                         }
-                        if (tenantName.isBlank() || rentInt == null || leaseInt == null || propertyName.isBlank()) {
-                            errorMessage = "\u8bf7\u5b8c\u6574\u586b\u5199\u5fc5\u586b\u9879\uff0c\u4e14\u79df\u91d1\u5fc5\u987b\u4e3a\u6570\u5b57"
+                        if (tenantName.isBlank() || rentInt == null || propertyFeeInt == null || leaseInt == null || propertyName.isBlank()) {
+                            errorMessage = "\u8bf7\u5b8c\u6574\u586b\u5199\u5fc5\u586b\u9879\uff0c\u4e14\u6708\u79df\u91d1\u3001\u7269\u4e1a\u8d39\u3001\u5468\u671f\u5fc5\u987b\u4e3a\u6570\u5b57"
+                            return@Button
+                        }
+                        if (depositAmount.toIntOrNull() == null && depositAmount.isNotBlank()) {
+                            errorMessage = "\u62bc\u91d1\u5fc5\u987b\u4e3a\u6570\u5b57"
                             return@Button
                         }
                         if (!tenantPhone.matches(Regex("^\\d{11}$"))) {
@@ -246,6 +283,9 @@ fun RentalEntryScreen(
                             contractDate = contractDate,
                             rentStartDate = rentStartDate,
                             monthlyRent = rentInt,
+                            propertyFee = propertyFeeInt,
+                            depositAmount = depositInt,
+                            depositStatus = depositStatus,
                             leaseMonths = leaseInt,
                             paymentFrequency = selectedFreq.first,
                             onSuccess = { showSuccessDialog = true },
@@ -332,10 +372,16 @@ fun NativeDatePickerField(label: String, selectedDate: LocalDate, onDateSelected
 }
 
 @Composable
-fun SingleChoiceDialogField(label: String, options: List<String>, selectedOption: String, onOptionSelected: (String) -> Unit) {
+fun SingleChoiceDialogField(
+    label: String,
+    options: List<String>,
+    selectedOption: String,
+    onOptionSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     var showDialog by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxWidth().clickable { showDialog = true }) {
+    Box(modifier = modifier.fillMaxWidth().clickable { showDialog = true }) {
         OutlinedTextField(
             value = selectedOption,
             onValueChange = {},

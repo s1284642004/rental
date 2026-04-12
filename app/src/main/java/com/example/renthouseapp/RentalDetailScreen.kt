@@ -63,6 +63,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Calendar
 
 private const val DEFAULT_PAYEE_NAME = "罗琪琛"
+private val DEPOSIT_STATUS_OPTIONS = listOf("未支付", "已支付", "已退还", "已扣除")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -96,6 +97,11 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
     var editName by remember { mutableStateOf("") }
     var editPhone by remember { mutableStateOf("") }
     var editIdCard by remember { mutableStateOf("") }
+    var editMonthlyRent by remember { mutableStateOf("") }
+    var editPropertyFee by remember { mutableStateOf("") }
+    var editDepositAmount by remember { mutableStateOf("") }
+    var editDepositStatus by remember { mutableStateOf("\u672a\u652f\u4ed8") }
+    var showUpdateSuccessDialog by remember { mutableStateOf(false) }
 
     val pullRefreshState = rememberPullRefreshState(
         refreshing = viewModel.isRefreshing,
@@ -176,6 +182,10 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                                 editName = rental.tenantName
                                 editPhone = rental.tenantPhone
                                 editIdCard = rental.tenantIdCard
+                                editMonthlyRent = rental.monthlyRent.toString()
+                                editPropertyFee = rental.propertyFee.toString()
+                                editDepositAmount = rental.depositAmount.toString()
+                                editDepositStatus = rental.depositStatus
                                 showEditDialog = true
                             }) {
                                 Text("\u4fee\u6539\u4fe1\u606f")
@@ -189,6 +199,9 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                         DetailRow("\u5408\u540c\u7b7e\u8ba2\u65e5", rental.contractDate.toString())
                         DetailRow("\u79df\u91d1\u8d77\u59cb\u65e5", rental.rentStartDate.toString())
                         DetailRow("\u521d\u59cb\u6708\u79df\u91d1", "\u00a5${rental.monthlyRent}")
+                        DetailRow("\u6bcf\u6708\u7269\u4e1a\u8d39", "\u00a5${rental.propertyFee}")
+                        DetailRow("\u62bc\u91d1", "\u00a5${rental.depositAmount}")
+                        DetailRow("\u62bc\u91d1\u72b6\u6001", rental.depositStatus)
                         DetailRow("\u5468\u671f", "${rental.leaseMonths}\u4e2a\u6708\uff08\u6bcf${rental.paymentFrequency}\u4e2a\u6708\u4e00\u4ed8\uff09")
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         DetailRow("\u521b\u5efa\u4eba", rental.createdBy.ifBlank { "unknown" })
@@ -328,7 +341,7 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
     if (showEditDialog) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
-            title = { Text("\u4fee\u6539\u79df\u5ba2\u4fe1\u606f") },
+            title = { Text("\u4fee\u6539\u5408\u540c\u4fe1\u606f") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("\u59d3\u540d") })
@@ -343,12 +356,63 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                         onValueChange = { editIdCard = it },
                         label = { Text("\u8bc1\u4ef6\u53f7\u7801\uff08\u9009\u586b\uff09") }
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = editMonthlyRent,
+                            onValueChange = { editMonthlyRent = it },
+                            label = { Text("\u6708\u79df\u91d1(\u5143)") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        OutlinedTextField(
+                            value = editPropertyFee,
+                            onValueChange = { editPropertyFee = it },
+                            label = { Text("\u7269\u4e1a\u8d39(\u5143)") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = editDepositAmount,
+                            onValueChange = { editDepositAmount = it },
+                            label = { Text("\u62bc\u91d1(\u5143)") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        SingleChoiceDialogField(
+                            label = "\u62bc\u91d1\u72b6\u6001",
+                            options = DEPOSIT_STATUS_OPTIONS,
+                            selectedOption = editDepositStatus,
+                            onOptionSelected = { editDepositStatus = it },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    if (editName.isNotBlank() && editPhone.matches(Regex("^\\d{11}$"))) {
-                        viewModel.updateTenantInfo(rental.id, editName, editPhone, editIdCard)
+                    val monthlyRent = editMonthlyRent.toIntOrNull()
+                    val propertyFee = editPropertyFee.toIntOrNull()
+                    val depositAmount = editDepositAmount.toIntOrNull()
+                    if (
+                        editName.isNotBlank() &&
+                        editPhone.matches(Regex("^\\d{11}$")) &&
+                        monthlyRent != null &&
+                        propertyFee != null &&
+                        depositAmount != null
+                    ) {
+                        viewModel.updateRentalContractInfo(
+                            rentalId = rental.id,
+                            newName = editName,
+                            newPhone = editPhone,
+                            newIdCard = editIdCard,
+                            newMonthlyRent = monthlyRent,
+                            newPropertyFee = propertyFee,
+                            newDepositAmount = depositAmount,
+                            newDepositStatus = editDepositStatus,
+                            onSuccess = { showUpdateSuccessDialog = true }
+                        )
                         showEditDialog = false
                     }
                 }) {
@@ -400,6 +464,19 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             }
         )
     }
+
+    if (showUpdateSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showUpdateSuccessDialog = false },
+            title = { Text("\u63d0\u793a") },
+            text = { Text("\u66f4\u6539\u4fe1\u606f\u6210\u529f") },
+            confirmButton = {
+                TextButton(onClick = { showUpdateSuccessDialog = false }) {
+                    Text("\u786e\u5b9a")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -439,6 +516,10 @@ fun PaymentRecordCard(
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             DetailRow("\u79df\u671f", "${payment.periodStartDate} \u81f3 ${payment.periodEndDate}")
             DetailRow("\u5e94\u6536\u91d1\u989d", "\u00a5${payment.amount}", isHighlight = !payment.isPaid, showEditIcon = !payment.isPaid, onEditClick = onEditAmountClick)
+            DetailRow("\u79df\u91d1", "\u00a5${payment.rentAmount}")
+            if (payment.propertyFeeAmount > 0) {
+                DetailRow("\u7269\u4e1a\u8d39", "\u00a5${payment.propertyFeeAmount}")
+            }
             if (!payment.isPaid) {
                 DetailRow("\u63d0\u9192\u65e5\u671f", "${payment.reminderDate}\uff08\u63d0\u524d15\u5929\uff09", color = MaterialTheme.colorScheme.error)
             }
@@ -460,7 +541,7 @@ fun PaymentRecordCard(
                 if (!payment.isPaid) {
                     OutlinedButton(
                         onClick = {
-                            val msg = "\u4f60\u597d $tenantName\uff0c\u3010$propertyName\u3011\uff08${payment.periodStartDate} \u81f3 ${payment.periodEndDate}\uff09\u7b2c${payment.periodNumber}\u671f\u79df\u91d1\uff08\u00a5${payment.amount}\uff09\u5c06\u4e8e ${payment.dueDate} \u5230\u671f\uff0c\u8bf7\u6309\u65f6\u7f34\u7eb3\uff0c\u8c22\u8c22\uff01"
+                            val msg = buildCollectionReminderMessage(tenantName, propertyName, payment)
                             clipboardManager.setText(AnnotatedString(msg))
                             Toast.makeText(context, "\u50ac\u6536\u77ed\u4fe1\u5df2\u590d\u5236", Toast.LENGTH_SHORT).show()
                         },
@@ -523,6 +604,19 @@ private fun LocalDateTime?.formatOrDash(): String {
     return this?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) ?: "-"
 }
 
+private fun buildCollectionReminderMessage(
+    tenantName: String,
+    propertyName: String,
+    payment: UiPaymentRecord
+): String {
+    val propertyFeeText = if (payment.propertyFeeAmount > 0) {
+        "，其中物业费￥${payment.propertyFeeAmount}"
+    } else {
+        ""
+    }
+    return "你好 $tenantName，【$propertyName】（${payment.periodStartDate} 至 ${payment.periodEndDate}）第${payment.periodNumber}期应缴费用￥${payment.amount}$propertyFeeText，将于 ${payment.dueDate} 到期，请按时缴纳，谢谢！"
+}
+
 @Composable
 fun CollectionPaymentCard(
     item: UiCollectionItem,
@@ -558,6 +652,10 @@ fun CollectionPaymentCard(
             DetailRow("\u79df\u5ba2", item.tenantName)
             DetailRow("\u79df\u671f", "${payment.periodStartDate} \u81f3 ${payment.periodEndDate}")
             DetailRow("\u5e94\u6536\u91d1\u989d", "\u00a5${payment.amount}", isHighlight = !payment.isPaid)
+            DetailRow("\u79df\u91d1", "\u00a5${payment.rentAmount}")
+            if (payment.propertyFeeAmount > 0) {
+                DetailRow("\u7269\u4e1a\u8d39", "\u00a5${payment.propertyFeeAmount}")
+            }
             DetailRow("\u5e94\u7f34\u65e5\u671f", payment.dueDate.toString())
             DetailRow("\u63d0\u9192\u65e5\u671f", payment.reminderDate.toString(), color = MaterialTheme.colorScheme.error)
 
@@ -569,7 +667,7 @@ fun CollectionPaymentCard(
                 if (!payment.isPaid) {
                     OutlinedButton(
                         onClick = {
-                            val msg = "\u4f60\u597d ${item.tenantName}\uff0c\u3010${item.propertyName}\u3011\uff08${payment.periodStartDate} \u81f3 ${payment.periodEndDate}\uff09\u7b2c${payment.periodNumber}\u671f\u79df\u91d1\uff08\u00a5${payment.amount}\uff09\u5c06\u4e8e ${payment.dueDate} \u5230\u671f\uff0c\u8bf7\u6309\u65f6\u7f34\u7eb3\uff0c\u8c22\u8c22\uff01"
+                            val msg = buildCollectionReminderMessage(item.tenantName, item.propertyName, payment)
                             clipboardManager.setText(AnnotatedString(msg))
                             onCopySuccess()
                         },
