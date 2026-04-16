@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,6 +44,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.renthouseapp.ui.theme.CalendarGreen
+import com.example.renthouseapp.ui.theme.LocalAppDimensions
+import com.example.renthouseapp.ui.theme.LocalIsSeniorMode
 import com.example.renthouseapp.ui.theme.White
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -50,6 +53,8 @@ import java.time.LocalDate
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Unit) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
     val rentals = viewModel.rentals
     val context = LocalContext.current
     val tabs = listOf("全部", "待生效", "进行中", "已完成")
@@ -83,9 +88,9 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
         if (readGranted && writeGranted) {
             val count = CalendarHelper.syncAllUnpaidToCalendar(context, rentals)
             if (count > 0) {
-                Toast.makeText(context, "成功将 $count 条待收款提醒同步至日历", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "成功同步 $count 条日历提醒", Toast.LENGTH_LONG).show()
             } else {
-                Toast.makeText(context, "暂无需要同步的待收款记录", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "暂无需要同步的日历提醒", Toast.LENGTH_SHORT).show()
             }
         } else {
             Toast.makeText(context, "需要日历权限才能同步", Toast.LENGTH_SHORT).show()
@@ -116,13 +121,23 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .then(if (isSeniorMode) Modifier.heightIn(min = ui.buttonHeight) else Modifier)
+                    .padding(horizontal = ui.screenPadding, vertical = ui.itemSpacing),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = CalendarGreen,
                     contentColor = White
-                )
+                ),
+                contentPadding = if (isSeniorMode) {
+                    ButtonDefaults.ButtonWithIconContentPadding
+                } else {
+                    ButtonDefaults.ContentPadding
+                }
             ) {
-                Icon(Icons.Default.DateRange, contentDescription = "同步日历", modifier = Modifier.padding(end = 8.dp))
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = "同步日历",
+                    modifier = Modifier.padding(end = 8.dp)
+                )
                 Text("一键同步至日历", fontWeight = FontWeight.Bold)
             }
 
@@ -150,8 +165,12 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            contentPadding = PaddingValues(
+                                start = ui.screenPadding,
+                                end = ui.screenPadding,
+                                bottom = ui.screenPadding
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(ui.itemSpacing)
                         ) {
                             items(displayRentals, key = { it.id }) { rental ->
                                 RentalCard(rental = rental, onClick = { onRentalClick(rental) })
@@ -172,6 +191,7 @@ fun RentalListScreen(viewModel: RentalViewModel, onRentalClick: (UiRental) -> Un
 
 @Composable
 fun RentalCard(rental: UiRental, onClick: () -> Unit) {
+    val ui = LocalAppDimensions.current
     val isPendingEffective = !rental.isCompleted && rental.rentStartDate.isAfter(LocalDate.now())
     val containerColor = if (rental.isCompleted) {
         MaterialTheme.colorScheme.surfaceVariant
@@ -186,7 +206,7 @@ fun RentalCard(rental: UiRental, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(if (rental.isCompleted) 0.dp else 4.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(ui.cardPadding)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -200,13 +220,11 @@ fun RentalCard(rental: UiRental, onClick: () -> Unit) {
                     rental.isCompleted -> Badge(containerColor = MaterialTheme.colorScheme.secondary) {
                         Text("已完成", modifier = Modifier.padding(4.dp))
                     }
-
                     isPendingEffective -> Badge(containerColor = MaterialTheme.colorScheme.tertiary) {
                         Text("待生效", modifier = Modifier.padding(4.dp))
                     }
-
                     else -> Text(
-                        text = "￥${rental.monthlyRent + rental.propertyFee}/月",
+                        text = "¥${rental.monthlyRent + rental.propertyFee}/月",
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -227,9 +245,8 @@ fun RentalCard(rental: UiRental, onClick: () -> Unit) {
                 Text("租金到期日: ${rental.rentEndDate}")
                 Text("催收提前: ${rental.reminderDaysBeforeDue} 天", color = MaterialTheme.colorScheme.primary)
             } else {
-                Text("本次应缴金额: ￥${rental.totalAmount}", fontWeight = FontWeight.Bold)
-                Text("下次缴纳日期: ${rental.nextPaymentDate ?: "合同已完成"}")
-                Text("催款提醒日期: ${rental.reminderDate ?: "-"}", color = MaterialTheme.colorScheme.error)
+                Text("本次应缴金额: ¥${rental.totalAmount}", fontWeight = FontWeight.Bold)
+                Text("下次催租日期: ${rental.reminderDate ?: "-"}", color = MaterialTheme.colorScheme.error)
             }
         }
     }

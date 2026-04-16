@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -48,7 +49,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.renthouseapp.ui.theme.LocalAppDimensions
+import com.example.renthouseapp.ui.theme.LocalIsSeniorMode
 import java.time.LocalDate
 import java.util.Calendar
 
@@ -58,6 +62,8 @@ fun RentalEntryScreen(
     viewModel: RentalViewModel,
     onLogout: () -> Unit
 ) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
     val draft = viewModel.entryFormDraft
     val propertyName = draft.propertyName
     val tenantName = draft.tenantName
@@ -122,9 +128,9 @@ fun RentalEntryScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(ui.screenPadding)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(ui.itemSpacing)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -133,12 +139,22 @@ fun RentalEntryScreen(
                 ) {
                     Text(
                         text = "\u6b22\u8fce\u4f60 ${currentLoginUser?.loginName.orEmpty()}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp)
                     )
                     Button(
                         onClick = onLogout,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                        modifier = if (isSeniorMode) {
+                            Modifier.defaultMinSize(minHeight = ui.compactButtonHeight)
+                        } else {
+                            Modifier
+                        }
                     ) {
                         Text("\u9000\u51fa\u767b\u5f55")
                     }
@@ -331,7 +347,13 @@ fun RentalEntryScreen(
                             onError = { errorMessage = it }
                         )
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = if (isSeniorMode) {
+                        Modifier
+                            .fillMaxWidth()
+                            .height(ui.buttonHeight)
+                    } else {
+                        Modifier.fillMaxWidth()
+                    }
                 ) {
                     Text("\u786e\u8ba4\u5e76\u5f55\u5165")
                 }
@@ -380,6 +402,8 @@ fun RentalEntryScreen(
 
 @Composable
 fun NativeDatePickerField(label: String, selectedDate: LocalDate, onDateSelected: (LocalDate) -> Unit) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
     val context = LocalContext.current
     val calendar = Calendar.getInstance().apply {
         set(selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth)
@@ -400,7 +424,13 @@ fun NativeDatePickerField(label: String, selectedDate: LocalDate, onDateSelected
             label = { Text(label) },
             trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "") },
             enabled = false,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = if (isSeniorMode) {
+                Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = ui.fieldMinHeight)
+            } else {
+                Modifier.fillMaxWidth()
+            },
             colors = OutlinedTextFieldDefaults.colors(
                 disabledTextColor = MaterialTheme.colorScheme.onSurface,
                 disabledBorderColor = MaterialTheme.colorScheme.outline,
@@ -418,6 +448,8 @@ fun SingleChoiceDialogField(
     onOptionSelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
     var showDialog by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxWidth().clickable { showDialog = true }) {
@@ -427,7 +459,13 @@ fun SingleChoiceDialogField(
             readOnly = true,
             label = { Text(label) },
             enabled = false,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = if (isSeniorMode) {
+                Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = ui.fieldMinHeight)
+            } else {
+                Modifier.fillMaxWidth()
+            },
             colors = OutlinedTextFieldDefaults.colors(
                 disabledTextColor = MaterialTheme.colorScheme.onSurface,
                 disabledBorderColor = MaterialTheme.colorScheme.outline,

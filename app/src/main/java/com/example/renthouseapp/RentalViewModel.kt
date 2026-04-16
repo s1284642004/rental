@@ -231,6 +231,7 @@ class RentalViewModel : ViewModel() {
                         val updatedRentals = rentals.map { rental ->
                             val startDate = rental.rentStartDate?.toLocalDate() ?: LocalDate.now()
                             val leaseMonths = rental.leaseMonths ?: 0
+                            val rentalPayments = groupedPayments[rental.id.orEmpty()].orEmpty()
                             rental.apply {
                                 if (rentEndDate == null) {
                                     rentEndDate = calculateRentEndDate(startDate, leaseMonths).toDate()
@@ -245,7 +246,7 @@ class RentalViewModel : ViewModel() {
                                     tenantPhone = ""
                                 }
                                 if (isCompleted == null) {
-                                    isCompleted = false
+                                    isCompleted = rentalPayments.isNotEmpty() && rentalPayments.all { it.isPaid == true }
                                 }
                                 applyUpdateAudit(this)
                             }
@@ -449,18 +450,14 @@ class RentalViewModel : ViewModel() {
 
         repo.queryAllProperties(
             onSuccess = { properties ->
-                _availableProperties.clear()
-                _availableProperties.addAll(
-                    properties
-                        .filter { it.isAvailable != false }
-                        .mapNotNull { it.propertyName }
-                        .sorted()
-                )
-
                 repo.queryAllRentalRecords(
                     onSuccess = { records ->
                         repo.queryAllPaymentRecords(
                             onSuccess = { payments ->
+                                val occupiedPropertyNames = records
+                                    .filter { it.isCompleted != true }
+                                    .mapNotNull { it.propertyName }
+                                    .toSet()
                                 val grouped = payments.groupBy { it.rentalId }
                                 val uiList = records.map { record ->
                                     val uiPayments = grouped[record.id].orEmpty()
@@ -468,6 +465,14 @@ class RentalViewModel : ViewModel() {
                                         .sortedBy { it.periodNumber }
                                     record.toUiRental(uiPayments)
                                 }
+                                _availableProperties.clear()
+                                _availableProperties.addAll(
+                                    properties
+                                        .mapNotNull { it.propertyName }
+                                        .filter { it !in occupiedPropertyNames }
+                                        .distinct()
+                                        .sorted()
+                                )
                                 _rentals.clear()
                                 _rentals.addAll(uiList)
                                 finishSuccess(uiList.isEmpty())
@@ -698,6 +703,10 @@ class RentalViewModel : ViewModel() {
                             onResolved = { targetProperty ->
                                 val oldRentalId = existing.id
                                 val newRentalId = buildRentalRecordId(targetProperty.id, newContractDate)
+                                val allPaymentsCompleted =
+                                    payments.isNotEmpty() && payments.all { it.isPaid == true }
+                                val allPaymentsCompleted =
+                                    payments.isNotEmpty() && payments.all { it.isPaid == true }
                                 repo.queryRentalRecordById(
                                     newRentalId,
                                     onSuccess = { conflict ->
@@ -724,7 +733,7 @@ class RentalViewModel : ViewModel() {
                                             paymentFrequency = newPaymentFrequency
                                             remark = newRemark
                                             reminderDaysBeforeDue = newReminderDaysBeforeDue
-                                            isCompleted = false
+                                            isCompleted = allPaymentsCompleted
                                             createdBy = existing.createdBy
                                             createdAt = existing.createdAt
                                         }
@@ -882,6 +891,8 @@ class RentalViewModel : ViewModel() {
                             onResolved = { targetProperty ->
                                 val oldRentalId = existing.id.orEmpty()
                                 val newRentalId = buildRentalRecordId(targetProperty.id, newContractDate)
+                                val allPaymentsCompleted =
+                                    payments.isNotEmpty() && payments.all { it.isPaid == true }
                                 repo.queryRentalRecordById(
                                     newRentalId,
                                     onSuccess = { conflict ->
@@ -908,7 +919,7 @@ class RentalViewModel : ViewModel() {
                                             paymentFrequency = newPaymentFrequency
                                             remark = newRemark
                                             reminderDaysBeforeDue = newReminderDaysBeforeDue
-                                            isCompleted = false
+                                            isCompleted = allPaymentsCompleted
                                             createdBy = existing.createdBy
                                             createdAt = existing.createdAt
                                         }
@@ -942,6 +953,8 @@ class RentalViewModel : ViewModel() {
                                             }
                                             newPayment
                                         }
+                                        updatedRental.isCompleted =
+                                            regeneratedPayments.isNotEmpty() && regeneratedPayments.all { it.isPaid == true }
 
                                         val finishUpdate = {
                                             syncEditedProperties(
@@ -1102,6 +1115,7 @@ class RentalViewModel : ViewModel() {
                     onSuccess = { rental ->
                         val existing = rental ?: return@queryRentalRecordById
                         if (existing.isCompleted == shouldCompleted) {
+                            syncPropertyAvailabilityForRental(existing)
                             refreshAllData()
                             return@queryRentalRecordById
                         }
@@ -1110,9 +1124,47 @@ class RentalViewModel : ViewModel() {
                         applyUpdateAudit(existing)
                         repo.upsertRentalRecord(
                             existing,
-                            onSuccess = { refreshAllData() },
+                            onSuccess = {
+                                syncPropertyAvailabilityForRental(existing)
+                                refreshAllData()
+                            },
                             onError = { initError = it.message }
                         )
+                    },
+                    onError = { initError = it.message }
+                )
+            },
+            onError = { initError = it.message }
+        )
+    }
+
+    private fun syncPropertyAvailabilityForRental(rental: RentalRecord) {
+        val repo = repository ?: return
+        val propertyId = rental.propertyId.orEmpty()
+        val propertyName = rental.propertyName.orEmpty()
+        if (propertyId.isBlank() && propertyName.isBlank()) return
+
+        repo.queryAllRentalRecords(
+            onSuccess = { rentals ->
+                val hasUnfinishedContract = rentals.any {
+                    it.id != rental.id &&
+                        it.isCompleted != true &&
+                        (
+                            (propertyId.isNotBlank() && it.propertyId == propertyId) ||
+                                (propertyName.isNotBlank() && it.propertyName == propertyName)
+                            )
+                }
+                val shouldAvailable = rental.isCompleted == true && !hasUnfinishedContract
+                repo.queryAllProperties(
+                    onSuccess = { properties ->
+                        val property = properties.firstOrNull {
+                            (propertyId.isNotBlank() && it.id == propertyId) ||
+                                (propertyName.isNotBlank() && it.propertyName == propertyName)
+                        } ?: return@queryAllProperties
+                        if (property.isAvailable == shouldAvailable) return@queryAllProperties
+
+                        property.isAvailable = shouldAvailable
+                        repo.upsertProperty(property, onSuccess = {}, onError = { initError = it.message })
                     },
                     onError = { initError = it.message }
                 )

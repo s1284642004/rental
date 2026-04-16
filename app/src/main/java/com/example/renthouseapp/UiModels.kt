@@ -51,7 +51,7 @@ data class UiRental(
 ) {
     val totalAmount: Int get() = paymentSchedule.firstOrNull { !it.isPaid }?.amount ?: (monthlyRent + propertyFee)
     val nextPaymentDate: LocalDate? get() = paymentSchedule.firstOrNull { !it.isPaid }?.dueDate
-    val reminderDate: LocalDate? get() = nextPaymentDate?.minusDays(15)
+    val reminderDate: LocalDate? get() = paymentSchedule.firstOrNull { !it.isPaid }?.reminderDate
 }
 
 data class EntryFormDraft(

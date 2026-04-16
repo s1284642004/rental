@@ -1,4 +1,4 @@
-package com.example.renthouseapp
+﻿package com.example.renthouseapp
 
 import android.content.Intent
 import android.net.Uri
@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -61,13 +62,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.renthouseapp.ui.theme.LocalAppDimensions
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 
-private const val DEFAULT_PAYEE_NAME = "罗琪琛"
+private const val DEFAULT_PAYEE_NAME = ""
 private val DEPOSIT_STATUS_OPTIONS = listOf("未支付", "已支付", "已退还", "已扣除")
 
 private val PAYMENT_OPTIONS = listOf(
@@ -85,8 +88,11 @@ fun RentalDetailScreen(
     viewModel: RentalViewModel,
     onBackClick: () -> Unit,
     autoOpenRenewDialog: Boolean = false,
-    onAutoOpenRenewHandled: () -> Unit = {}
+    onAutoOpenRenewHandled: () -> Unit = {},
+    isSeniorMode: Boolean = false,
+    onToggleSeniorMode: () -> Unit = {}
 ) {
+    val ui = LocalAppDimensions.current
     val context = LocalContext.current
     val payeeOptions = remember(viewModel.availablePayees, viewModel.currentLoginUser) {
         val queriedPayees = viewModel.availablePayees
@@ -153,10 +159,11 @@ fun RentalDetailScreen(
     val renewRentEndDate = renewLeaseMonthsValue?.let { renewRentStartDate.plusMonths(it.toLong()).minusDays(1) }
     val today = LocalDate.now()
     val isPendingEffective = !rental.isCompleted && rental.rentStartDate.isAfter(today)
+    val isCompletedRental = rental.isCompleted
     val hasOtherUnfinishedContract = viewModel.rentals.any {
         it.propertyName == rental.propertyName && !it.isCompleted && it.id != rental.id
     }
-    val canRenew = !isPendingEffective && !hasOtherUnfinishedContract
+    val canRenew = isCompletedRental && !isPendingEffective && !hasOtherUnfinishedContract
 
     LaunchedEffect(autoOpenRenewDialog, canRenew, rental.id) {
         if (autoOpenRenewDialog) {
@@ -204,6 +211,9 @@ fun RentalDetailScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = onToggleSeniorMode) {
+                        Text(if (isSeniorMode) "标准版" else "老年模式")
+                    }
                     IconButton(onClick = {
                         val nextPay = rental.paymentSchedule.firstOrNull { !it.isPaid }
                         val intent = Intent(Intent.ACTION_INSERT).apply {
@@ -231,20 +241,20 @@ fun RentalDetailScreen(
         }
     ) { innerPadding ->
         Box(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .pullRefresh(pullRefreshState)
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+                    .pullRefresh(pullRefreshState)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(ui.screenPadding),
+                verticalArrangement = Arrangement.spacedBy(ui.sectionSpacing)
             ) {
                 Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(2.dp)) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.padding(ui.cardPadding), verticalArrangement = Arrangement.spacedBy(ui.itemSpacing / 2)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -259,7 +269,7 @@ fun RentalDetailScreen(
                         HorizontalDivider()
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.Top
                         ) {
                             OutlinedButton(
@@ -282,7 +292,7 @@ fun RentalDetailScreen(
                                 },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(52.dp),
+                                    .height(ui.compactButtonHeight),
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     contentColor = MaterialTheme.colorScheme.primary
                                 )
@@ -292,9 +302,9 @@ fun RentalDetailScreen(
                                     contentDescription = null,
                                     modifier = Modifier.padding(end = 6.dp)
                                 )
-                                Text("\u4fee\u6539\u4fe1\u606f")
+                                Text("\u4fee\u6539\u4fe1\u606f", maxLines = 1)
                             }
-                            if (!isPendingEffective) {
+                            if (isCompletedRental) {
                                 Column(
                                     modifier = Modifier.weight(1f),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -319,7 +329,7 @@ fun RentalDetailScreen(
                                         },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(52.dp),
+                                            .height(ui.compactButtonHeight),
                                         colors = ButtonDefaults.outlinedButtonColors(
                                             contentColor = MaterialTheme.colorScheme.primary
                                         )
@@ -329,7 +339,7 @@ fun RentalDetailScreen(
                                             contentDescription = null,
                                             modifier = Modifier.padding(end = 6.dp)
                                         )
-                                        Text("\u7eed\u79df")
+                                        Text("\u7eed\u79df", maxLines = 1)
                                     }
                                     if (!canRenew) {
                                         Text(
@@ -374,6 +384,7 @@ fun RentalDetailScreen(
                         propertyName = rental.propertyName,
                         tenantName = rental.tenantName,
                         tenantPhone = rental.tenantPhone,
+                        reminderDaysBeforeDue = rental.reminderDaysBeforeDue,
                         onReceiptClick = {
                             receiptPaymentId = payment.id
                             receiptPayee = payeeOptions.firstOrNull { payee -> payee == DEFAULT_PAYEE_NAME }
@@ -915,6 +926,7 @@ fun PaymentRecordCard(
     propertyName: String,
     tenantName: String,
     tenantPhone: String,
+    reminderDaysBeforeDue: Int,
     onReceiptClick: () -> Unit,
     onRevokeClick: () -> Unit,
     onEditAmountClick: () -> Unit
@@ -945,16 +957,28 @@ fun PaymentRecordCard(
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             DetailRow("\u79df\u671f", "${payment.periodStartDate} \u81f3 ${payment.periodEndDate}")
-            DetailRow("\u5e94\u6536\u91d1\u989d", "\u00a5${payment.amount}", isHighlight = !payment.isPaid, showEditIcon = !payment.isPaid, onEditClick = onEditAmountClick)
+            DetailRow("\u5f53\u671f\u6708\u6570", "${payment.monthsInPeriod}\u4e2a\u6708")
             DetailRow("\u672c\u671f\u6708\u79df\u91d1", "\u00a5${payment.monthlyRentSnapshot}")
-            DetailRow("\u79df\u91d1", "\u00a5${payment.rentAmount}")
+            DetailRow(
+                "\u672c\u671f\u5e94\u6536\u603b\u91d1\u989d",
+                "\u00a5${payment.amount}",
+                isHighlight = !payment.isPaid,
+                showEditIcon = !payment.isPaid,
+                onEditClick = onEditAmountClick
+            )
             if (payment.propertyFeeAmount > 0) {
                 DetailRow("\u7269\u4e1a\u8d39", "\u00a5${payment.propertyFeeAmount}")
             }
-            if (!payment.isPaid) {
-                DetailRow("\u63d0\u9192\u65e5\u671f", "${payment.reminderDate}\uff08\u63d0\u524d15\u5929\uff09", color = MaterialTheme.colorScheme.error)
-            }
-            DetailRow("\u5e94\u7f34\u65e5\u671f", payment.dueDate.toString())
+            DetailRow(
+                "\u50ac\u79df\u65e5\u671f",
+                payment.reminderDate.toString(),
+                color = MaterialTheme.colorScheme.error
+            )
+            DetailRow(
+                "\u63d0\u524d\u50ac\u79df\u5929\u6570",
+                "${reminderDaysBeforeDue}\u5929",
+                color = MaterialTheme.colorScheme.error
+            )
 
             if (payment.isPaid) {
                 Text(
@@ -975,7 +999,12 @@ fun PaymentRecordCard(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                val msg = buildSmsReminderMessage(tenantName, propertyName, payment)
+                                val msg = buildSmsReminderMessage(
+                                    tenantName = tenantName,
+                                    propertyName = propertyName,
+                                    payment = payment,
+                                    reminderDaysBeforeDue = reminderDaysBeforeDue
+                                )
                                 if (!launchSmsComposer(context, tenantPhone, msg)) {
                                     Toast.makeText(context, "\u672a\u627e\u5230\u53ef\u53d1\u9001\u77ed\u4fe1\u7684\u5e94\u7528", Toast.LENGTH_SHORT).show()
                                 }
@@ -1032,13 +1061,23 @@ fun DetailRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
-        Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(136.dp),
+            maxLines = 1
+        )
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.Top
+        ) {
             Text(
                 text = value,
+                modifier = Modifier.weight(1f, fill = false),
+                textAlign = TextAlign.End,
                 fontWeight = if (isHighlight) FontWeight.Bold else FontWeight.Normal,
                 color = if (isHighlight) MaterialTheme.colorScheme.primary else color
             )
@@ -1066,14 +1105,10 @@ private fun LocalDateTime?.formatOrDash(): String {
 private fun buildSmsReminderMessage(
     tenantName: String,
     propertyName: String,
-    payment: UiPaymentRecord
+    payment: UiPaymentRecord,
+    reminderDaysBeforeDue: Int
 ): String {
-    val propertyFeeText = if (payment.propertyFeeAmount > 0) {
-        "\uff0c\u5176\u4e2d\u7269\u4e1a\u8d39${payment.propertyFeeAmount}\u5143"
-    } else {
-        ""
-    }
-    return "\u4f60\u597d\uff0c$tenantName\u3002[$propertyName] ${payment.periodStartDate} \u81f3 ${payment.periodEndDate} \u7684\u7b2c${payment.periodNumber}\u671f\u79df\u91d1\u5e94\u7f34${payment.amount}\u5143$propertyFeeText\uff0c\u5c06\u4e8e${payment.dueDate}\u5230\u671f\uff0c\u8bf7\u53ca\u65f6\u7f34\u7eb3\uff0c\u8c22\u8c22\u3002"
+    return "$tenantName，您好，您应付[$propertyName] ${payment.periodStartDate} 至 ${payment.periodEndDate} 的第${payment.periodNumber}期共${payment.monthsInPeriod}个月租金应缴${payment.amount}元，将于${payment.reminderDate}到期，请及时按合同约定方式付款，谢谢。"
 }
 
 private fun launchSmsComposer(
@@ -1122,12 +1157,7 @@ private fun buildCollectionReminderMessage(
     propertyName: String,
     payment: UiPaymentRecord
 ): String {
-    val propertyFeeText = if (payment.propertyFeeAmount > 0) {
-        "，其中物业费￥${payment.propertyFeeAmount}"
-    } else {
-        ""
-    }
-    return "你好 $tenantName，【$propertyName】（${payment.periodStartDate} 至 ${payment.periodEndDate}）第${payment.periodNumber}期应缴费用￥${payment.amount}$propertyFeeText，将于 ${payment.dueDate} 到期，请按时缴纳，谢谢！"
+    return "$tenantName，您好，您应付[$propertyName] ${payment.periodStartDate} 至 ${payment.periodEndDate} 的第${payment.periodNumber}期共${payment.monthsInPeriod}个月租金应缴${payment.amount}元，将于${payment.reminderDate}到期，请及时按合同约定方式付款，谢谢。"
 }
 
 @Composable
@@ -1166,14 +1196,26 @@ fun CollectionPaymentCard(
             DetailRow("\u79df\u5ba2", item.tenantName)
             DetailRow("\u7535\u8bdd", item.tenantPhone)
             DetailRow("\u79df\u671f", "${payment.periodStartDate} \u81f3 ${payment.periodEndDate}")
-            DetailRow("\u5e94\u6536\u91d1\u989d", "\u00a5${payment.amount}", isHighlight = !payment.isPaid)
+            DetailRow("\u5f53\u671f\u6708\u6570", "${payment.monthsInPeriod}\u4e2a\u6708")
             DetailRow("\u672c\u671f\u6708\u79df\u91d1", "\u00a5${payment.monthlyRentSnapshot}")
-            DetailRow("\u79df\u91d1", "\u00a5${payment.rentAmount}")
+            DetailRow(
+                "\u672c\u671f\u5e94\u6536\u603b\u91d1\u989d",
+                "\u00a5${payment.amount}",
+                isHighlight = !payment.isPaid
+            )
             if (payment.propertyFeeAmount > 0) {
                 DetailRow("\u7269\u4e1a\u8d39", "\u00a5${payment.propertyFeeAmount}")
             }
-            DetailRow("\u5e94\u7f34\u65e5\u671f", payment.dueDate.toString())
-            DetailRow("\u63d0\u9192\u65e5\u671f", payment.reminderDate.toString(), color = MaterialTheme.colorScheme.error)
+            DetailRow(
+                "\u50ac\u79df\u65e5\u671f",
+                payment.reminderDate.toString(),
+                color = MaterialTheme.colorScheme.error
+            )
+            DetailRow(
+                "\u63d0\u524d\u50ac\u79df\u5929\u6570",
+                "${item.reminderDaysBeforeDue}\u5929",
+                color = MaterialTheme.colorScheme.error
+            )
 
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -1186,7 +1228,12 @@ fun CollectionPaymentCard(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                val msg = buildSmsReminderMessage(item.tenantName, item.propertyName, payment)
+                                val msg = buildSmsReminderMessage(
+                                    tenantName = item.tenantName,
+                                    propertyName = item.propertyName,
+                                    payment = payment,
+                                    reminderDaysBeforeDue = item.reminderDaysBeforeDue
+                                )
                                 if (!launchSmsComposer(context, item.tenantPhone, msg)) {
                                     onSmsUnavailable()
                                 }
@@ -1231,3 +1278,4 @@ fun CollectionPaymentCard(
         }
     }
 }
+

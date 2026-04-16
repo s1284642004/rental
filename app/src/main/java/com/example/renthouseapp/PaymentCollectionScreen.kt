@@ -45,6 +45,7 @@ data class UiCollectionItem(
     val propertyName: String,
     val tenantName: String,
     val tenantPhone: String,
+    val reminderDaysBeforeDue: Int,
     val payment: UiPaymentRecord
 )
 
@@ -80,6 +81,7 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
                         propertyName = rental.propertyName,
                         tenantName = rental.tenantName,
                         tenantPhone = rental.tenantPhone,
+                        reminderDaysBeforeDue = rental.reminderDaysBeforeDue,
                         payment = payment
                     )
                 }
@@ -96,6 +98,7 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
                         propertyName = rental.propertyName,
                         tenantName = rental.tenantName,
                         tenantPhone = rental.tenantPhone,
+                        reminderDaysBeforeDue = rental.reminderDaysBeforeDue,
                         payment = payment
                     )
                 }
@@ -262,8 +265,8 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
 private fun List<UiCollectionItem>.sortedByNearestDate(): List<UiCollectionItem> {
     val today = LocalDate.now()
     return sortedWith(
-        compareBy<UiCollectionItem> { abs(ChronoUnit.DAYS.between(today, it.payment.dueDate)) }
-            .thenBy { it.payment.dueDate }
+        compareBy<UiCollectionItem> { abs(ChronoUnit.DAYS.between(today, it.payment.reminderDate)) }
+            .thenBy { it.payment.reminderDate }
     )
 }
 

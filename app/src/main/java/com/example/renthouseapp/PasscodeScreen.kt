@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.renthouseapp.ui.theme.LocalAppDimensions
+import com.example.renthouseapp.ui.theme.LocalIsSeniorMode
 import kotlinx.coroutines.delay
 
 @Composable
@@ -45,6 +47,8 @@ fun PasscodeScreen(
     onLogin: (String, String) -> Unit,
     onMigrateDatabase: () -> Unit
 ) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
     var loginCode by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -67,7 +71,7 @@ fun PasscodeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(ui.screenPadding * 2),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -171,7 +175,13 @@ fun PasscodeScreen(
                     }
                 },
                 enabled = verifiedLoginName != null && !isLoading,
-                modifier = Modifier.fillMaxWidth()
+                modifier = if (isSeniorMode) {
+                    Modifier
+                        .fillMaxWidth()
+                        .height(ui.buttonHeight)
+                } else {
+                    Modifier.fillMaxWidth()
+                }
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(

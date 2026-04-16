@@ -31,18 +31,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
+import com.example.renthouseapp.ui.theme.LocalAppDimensions
 
-private data class RenewalScheduleItem(
-    val rental: UiRental,
-    val contractEndDate: LocalDate,
-    val daysUntilExpiry: Long,
-    val isPendingEffective: Boolean,
-    val hasRenewed: Boolean,
-    val canRenew: Boolean
-)
+private sealed interface RenewalListItem {
+    val propertyName: String
+
+    data class RenewalContract(
+        val rental: UiRental,
+        val hasRenewed: Boolean,
+        val canRenew: Boolean
+    ) : RenewalListItem {
+        override val propertyName: String = rental.propertyName
+    }
+
+    data class Vacancy(
+        override val propertyName: String
+    ) : RenewalListItem
+}
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -51,30 +56,31 @@ fun RenewalScheduleScreen(
     onRentalClick: (UiRental) -> Unit,
     onRenewClick: (UiRental) -> Unit
 ) {
+    val ui = LocalAppDimensions.current
     val context = LocalContext.current
-    val today = LocalDate.now()
-    val activeRentals = viewModel.rentals
-        .filter { !it.isCompleted }
+
+    val completedRenewItems = viewModel.rentals
+        .filter { it.isCompleted }
         .map { rental ->
-            val isPendingEffective = rental.rentStartDate.isAfter(today)
             val hasOtherUnfinishedContract = viewModel.rentals.any {
                 it.propertyName == rental.propertyName && !it.isCompleted && it.id != rental.id
             }
-            val hasRenewed = !isPendingEffective && hasOtherUnfinishedContract
-            RenewalScheduleItem(
+            RenewalListItem.RenewalContract(
                 rental = rental,
-                contractEndDate = rental.rentEndDate,
-                daysUntilExpiry = ChronoUnit.DAYS.between(today, rental.rentEndDate),
-                isPendingEffective = isPendingEffective,
-                hasRenewed = hasRenewed,
-                canRenew = !isPendingEffective && !hasOtherUnfinishedContract
+                hasRenewed = hasOtherUnfinishedContract,
+                canRenew = !hasOtherUnfinishedContract
             )
         }
-        .sortedWith(
-            compareBy<RenewalScheduleItem> { it.daysUntilExpiry }
-                .thenBy { it.contractEndDate }
-                .thenBy { it.rental.propertyName }
+        .associateBy { it.propertyName }
+
+    val items = buildList {
+        addAll(completedRenewItems.values)
+        addAll(
+            viewModel.availableProperties
+                .filter { it !in completedRenewItems.keys }
+                .map { RenewalListItem.Vacancy(it) }
         )
+    }.sortedBy { it.propertyName }
 
     val pullRefreshState = rememberPullRefreshState(
         refreshing = viewModel.isRefreshing,
@@ -95,22 +101,30 @@ fun RenewalScheduleScreen(
     )
 
     Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
-        if (activeRentals.isEmpty()) {
+        if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("暂无已出租的房源")
+                Text("暂无可招租或续租的房源")
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(ui.screenPadding),
+                verticalArrangement = Arrangement.spacedBy(ui.itemSpacing)
             ) {
-                items(activeRentals, key = { it.rental.id }) { item ->
-                    RenewalScheduleCard(
-                        item = item,
-                        onClick = { onRentalClick(item.rental) },
-                        onRenewClick = { onRenewClick(item.rental) }
-                    )
+                items(items, key = { item ->
+                    when (item) {
+                        is RenewalListItem.RenewalContract -> item.rental.id
+                        is RenewalListItem.Vacancy -> "vacancy_${item.propertyName}"
+                    }
+                }) { item ->
+                    when (item) {
+                        is RenewalListItem.RenewalContract -> RenewalContractCard(
+                            item = item,
+                            onClick = { onRentalClick(item.rental) },
+                            onRenewClick = { onRenewClick(item.rental) }
+                        )
+                        is RenewalListItem.Vacancy -> VacancyCard(propertyName = item.propertyName)
+                    }
                 }
             }
         }
@@ -124,11 +138,12 @@ fun RenewalScheduleScreen(
 }
 
 @Composable
-private fun RenewalScheduleCard(
-    item: RenewalScheduleItem,
+private fun RenewalContractCard(
+    item: RenewalListItem.RenewalContract,
     onClick: () -> Unit,
     onRenewClick: () -> Unit
 ) {
+    val ui = LocalAppDimensions.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,8 +152,8 @@ private fun RenewalScheduleCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(ui.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(ui.itemSpacing)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -147,9 +162,8 @@ private fun RenewalScheduleCard(
             ) {
                 Text(
                     text = item.rental.propertyName,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
                     modifier = Modifier
                         .weight(1f)
                         .padding(end = 8.dp)
@@ -159,7 +173,7 @@ private fun RenewalScheduleCard(
                     enabled = item.canRenew,
                     modifier = Modifier
                         .padding(start = 12.dp)
-                        .height(48.dp)
+                        .height(ui.compactButtonHeight)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -176,12 +190,7 @@ private fun RenewalScheduleCard(
             ) {
                 Text("租客: ${item.rental.tenantName}")
                 Text("电话: ${item.rental.tenantPhone}")
-                Text("租期: ${item.rental.rentStartDate} 至 ${item.contractEndDate}")
-                Text(
-                    text = formatExpiryText(item.daysUntilExpiry),
-                    color = expiryColor(item.daysUntilExpiry),
-                    fontWeight = FontWeight.Bold
-                )
+                Text("租期: ${item.rental.rentStartDate} 至 ${item.rental.rentEndDate}")
             }
 
             if (item.hasRenewed) {
@@ -196,14 +205,27 @@ private fun RenewalScheduleCard(
 }
 
 @Composable
-private fun expiryColor(daysUntilExpiry: Long) = when {
-    daysUntilExpiry < 0 -> MaterialTheme.colorScheme.error
-    daysUntilExpiry <= 30 -> MaterialTheme.colorScheme.primary
-    else -> MaterialTheme.colorScheme.onSurface
-}
-
-private fun formatExpiryText(daysUntilExpiry: Long): String = when {
-    daysUntilExpiry < 0 -> "已到期 ${kotlin.math.abs(daysUntilExpiry)} 天"
-    daysUntilExpiry == 0L -> "今天到期"
-    else -> "离到期还有 $daysUntilExpiry 天"
+private fun VacancyCard(propertyName: String) {
+    val ui = LocalAppDimensions.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(ui.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(ui.itemSpacing / 2)
+        ) {
+            Text(
+                text = propertyName,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "当前未出租，可在录入页直接新建合同",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
 }

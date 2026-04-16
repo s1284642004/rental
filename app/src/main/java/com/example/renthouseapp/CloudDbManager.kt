@@ -21,6 +21,15 @@ class CloudDbManager(private val context: Context) {
     private val cloudDB by lazy { AGConnectCloudDB.getInstance() }
     private var zone: CloudDBZone? = null
 
+    private fun localOnlyQueryPolicyOrNull(): CloudDBZoneQuery.CloudDBZoneQueryPolicy? {
+        return runCatching {
+            java.lang.Enum.valueOf(
+                CloudDBZoneQuery.CloudDBZoneQueryPolicy::class.java,
+                "POLICY_QUERY_FROM_LOCAL_ONLY"
+            )
+        }.getOrNull()
+    }
+
 
     private fun isCloudDbAbiSupported(): Boolean {
         return Build.SUPPORTED_ABIS.any { abi -> abi.startsWith("arm") }
@@ -118,25 +127,32 @@ class CloudDbManager(private val context: Context) {
         }
 
         val query = CloudDBZoneQuery.where(Property::class.java)
-
-        dbZone.executeQuery(
-            query,
-            CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY
-        ).addOnSuccessListener { snapshot ->
-            try {
-                val list = mutableListOf<Property>()
-                val cursor = snapshot.snapshotObjects
-                while (cursor.hasNext()) {
-                    cursor.next()?.let { list.add(it) }
+        fun execute(policy: CloudDBZoneQuery.CloudDBZoneQueryPolicy, onFailure: (Throwable) -> Unit) {
+            dbZone.executeQuery(query, policy)
+                .addOnSuccessListener { snapshot ->
+                    try {
+                        val list = mutableListOf<Property>()
+                        val cursor = snapshot.snapshotObjects
+                        while (cursor.hasNext()) {
+                            cursor.next()?.let { list.add(it) }
+                        }
+                        onSuccess(list)
+                    } catch (e: Exception) {
+                        onError(e)
+                    } finally {
+                        snapshot.release()
+                    }
                 }
-                onSuccess(list)
-            } catch (e: Exception) {
-                onError(e)
-            } finally {
-                snapshot.release()
+                .addOnFailureListener(onFailure)
+        }
+
+        execute(CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY) { cloudError ->
+            val localPolicy = localOnlyQueryPolicyOrNull()
+            if (localPolicy == null) {
+                onError(cloudError)
+            } else {
+                execute(localPolicy) { onError(cloudError) }
             }
-        }.addOnFailureListener { e ->
-            onError(e)
         }
     }
 
@@ -206,22 +222,33 @@ class CloudDbManager(private val context: Context) {
         }
 
         val query = CloudDBZoneQuery.where(LoginUser::class.java)
-        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
-            .addOnSuccessListener { snapshot ->
-                try {
-                    val list = mutableListOf<LoginUser>()
-                    val cursor = snapshot.snapshotObjects
-                    while (cursor.hasNext()) {
-                        cursor.next()?.let { list.add(it) }
+        fun execute(policy: CloudDBZoneQuery.CloudDBZoneQueryPolicy, onFailure: (Throwable) -> Unit) {
+            dbZone.executeQuery(query, policy)
+                .addOnSuccessListener { snapshot ->
+                    try {
+                        val list = mutableListOf<LoginUser>()
+                        val cursor = snapshot.snapshotObjects
+                        while (cursor.hasNext()) {
+                            cursor.next()?.let { list.add(it) }
+                        }
+                        onSuccess(list)
+                    } catch (e: Exception) {
+                        onError(e)
+                    } finally {
+                        snapshot.release()
                     }
-                    onSuccess(list)
-                } catch (e: Exception) {
-                    onError(e)
-                } finally {
-                    snapshot.release()
                 }
+                .addOnFailureListener(onFailure)
+        }
+
+        execute(CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY) { cloudError ->
+            val localPolicy = localOnlyQueryPolicyOrNull()
+            if (localPolicy == null) {
+                onError(cloudError)
+            } else {
+                execute(localPolicy) { onError(cloudError) }
             }
-            .addOnFailureListener { e -> onError(e) }
+        }
     }
 
     fun queryRentalRecordById(
@@ -259,22 +286,33 @@ class CloudDbManager(private val context: Context) {
         }
 
         val query = CloudDBZoneQuery.where(RentalRecord::class.java)
-        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
-            .addOnSuccessListener { snapshot ->
-                try {
-                    val list = mutableListOf<RentalRecord>()
-                    val cursor = snapshot.snapshotObjects
-                    while (cursor.hasNext()) {
-                        cursor.next()?.let { list.add(it) }
+        fun execute(policy: CloudDBZoneQuery.CloudDBZoneQueryPolicy, onFailure: (Throwable) -> Unit) {
+            dbZone.executeQuery(query, policy)
+                .addOnSuccessListener { snapshot ->
+                    try {
+                        val list = mutableListOf<RentalRecord>()
+                        val cursor = snapshot.snapshotObjects
+                        while (cursor.hasNext()) {
+                            cursor.next()?.let { list.add(it) }
+                        }
+                        onSuccess(list)
+                    } catch (e: Exception) {
+                        onError(e)
+                    } finally {
+                        snapshot.release()
                     }
-                    onSuccess(list)
-                } catch (e: Exception) {
-                    onError(e)
-                } finally {
-                    snapshot.release()
                 }
+                .addOnFailureListener(onFailure)
+        }
+
+        execute(CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY) { cloudError ->
+            val localPolicy = localOnlyQueryPolicyOrNull()
+            if (localPolicy == null) {
+                onError(cloudError)
+            } else {
+                execute(localPolicy) { onError(cloudError) }
             }
-            .addOnFailureListener { e -> onError(e) }
+        }
     }
 
     fun deleteRentalRecord(
@@ -317,22 +355,33 @@ class CloudDbManager(private val context: Context) {
         }
 
         val query = CloudDBZoneQuery.where(PaymentRecord::class.java)
-        dbZone.executeQuery(query, CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY)
-            .addOnSuccessListener { snapshot ->
-                try {
-                    val list = mutableListOf<PaymentRecord>()
-                    val cursor = snapshot.snapshotObjects
-                    while (cursor.hasNext()) {
-                        cursor.next()?.let { list.add(it) }
+        fun execute(policy: CloudDBZoneQuery.CloudDBZoneQueryPolicy, onFailure: (Throwable) -> Unit) {
+            dbZone.executeQuery(query, policy)
+                .addOnSuccessListener { snapshot ->
+                    try {
+                        val list = mutableListOf<PaymentRecord>()
+                        val cursor = snapshot.snapshotObjects
+                        while (cursor.hasNext()) {
+                            cursor.next()?.let { list.add(it) }
+                        }
+                        onSuccess(list)
+                    } catch (e: Exception) {
+                        onError(e)
+                    } finally {
+                        snapshot.release()
                     }
-                    onSuccess(list)
-                } catch (e: Exception) {
-                    onError(e)
-                } finally {
-                    snapshot.release()
                 }
+                .addOnFailureListener(onFailure)
+        }
+
+        execute(CloudDBZoneQuery.CloudDBZoneQueryPolicy.POLICY_QUERY_FROM_CLOUD_ONLY) { cloudError ->
+            val localPolicy = localOnlyQueryPolicyOrNull()
+            if (localPolicy == null) {
+                onError(cloudError)
+            } else {
+                execute(localPolicy) { onError(cloudError) }
             }
-            .addOnFailureListener { e -> onError(e) }
+        }
     }
 
     fun queryPaymentRecordsByRentalId(

@@ -9,6 +9,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
@@ -26,6 +27,7 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun RentHouseAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    isSeniorMode: Boolean = false,
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
@@ -40,9 +42,14 @@ fun RentHouseAppTheme(
         else -> LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalAppDimensions provides if (isSeniorMode) SeniorDimensions else DefaultDimensions,
+        LocalIsSeniorMode provides isSeniorMode
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = if (isSeniorMode) SeniorTypography else Typography,
+            content = content
+        )
+    }
 }
