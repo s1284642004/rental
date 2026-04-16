@@ -37,14 +37,22 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
 }
 
 dependencies {
     implementation(libs.agconnect.core)
+    implementation(libs.agconnect.auth)
     implementation(libs.agconnect.cloud.database)
 
     implementation("androidx.compose.material3:material3:1.2.1")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.material:material")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")

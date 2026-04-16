@@ -2,121 +2,495 @@ package com.example.renthouseapp
 
 import android.app.DatePickerDialog
 import android.widget.DatePicker
+import android.widget.Toast
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.renthouseapp.ui.theme.LocalAppDimensions
+import com.example.renthouseapp.ui.theme.LocalIsSeniorMode
 import java.time.LocalDate
 import java.util.Calendar
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
-fun RentalEntryScreen(viewModel: RentalViewModel) {
-    var propertyName by remember { mutableStateOf(viewModel.availableProperties[0]) }
-    var tenantName by remember { mutableStateOf("") }
-    var tenantPhone by remember { mutableStateOf("") }
-    var tenantIdCard by remember { mutableStateOf("") }
-    var monthlyRent by remember { mutableStateOf("") }
-    var leaseMonths by remember { mutableStateOf("12") }
-    var rentStartDate by remember { mutableStateOf(LocalDate.now()) }
-    var contractDate by remember { mutableStateOf(LocalDate.now()) }
+fun RentalEntryScreen(
+    viewModel: RentalViewModel,
+    onLogout: () -> Unit
+) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
+    val draft = viewModel.entryFormDraft
+    val propertyName = draft.propertyName
+    val tenantName = draft.tenantName
+    val tenantPhone = draft.tenantPhone
+    val tenantIdCard = draft.tenantIdCard
+    val monthlyRent = draft.monthlyRent
+    val propertyFee = draft.propertyFee
+    val depositAmount = draft.depositAmount
+    val depositStatus = draft.depositStatus
+    val leaseMonths = draft.leaseMonths
+    val remark = draft.remark
+    val reminderDaysBeforeDue = draft.reminderDaysBeforeDue
+    val rentStartDateText = draft.rentStartDateText.ifBlank { LocalDate.now().toString() }
+    val contractDateText = draft.contractDateText.ifBlank { LocalDate.now().toString() }
+    val rentStartDate = LocalDate.parse(rentStartDateText)
+    val contractDate = LocalDate.parse(contractDateText)
+    val leaseMonthValue = leaseMonths.toIntOrNull()
+    val rentEndDate = leaseMonthValue?.let { rentStartDate.plusMonths(it.toLong()).minusDays(1) }
 
-    // 需求5：交租方式，0代表一次性付清
-    val paymentOptions = listOf(1 to "每月一付", 3 to "季付(3个月)", 6 to "半年付", 12 to "年付", 0 to "一次性付清")
-    var selectedFreq by remember { mutableStateOf(paymentOptions[0]) }
+    val paymentOptions = listOf(
+        1 to "\u6bcf\u6708\u4e00\u4ed8",
+        3 to "\u5b63\u4ed8(3\u4e2a\u6708)",
+        6 to "\u534a\u5e74\u4ed8",
+        12 to "\u5e74\u4ed8",
+        0 to "\u4e00\u6b21\u6027\u4ed8\u6e05"
+    )
+    val selectedFreqValue = draft.paymentFrequencyValue
+    val selectedFreq = paymentOptions.firstOrNull { it.first == selectedFreqValue } ?: paymentOptions[0]
+    val depositStatusOptions = listOf("未支付", "已支付", "已退还", "已扣除")
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val currentLoginUser = viewModel.currentLoginUser
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("录入新房源", style = MaterialTheme.typography.headlineMedium)
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = viewModel.isRefreshing,
+        onRefresh = {
+            viewModel.refreshFromUser(
+                onSuccess = { isEmpty ->
+                    Toast.makeText(context, if (isEmpty) "\u6682\u65e0\u6570\u636e" else "\u6570\u636e\u5237\u65b0\u6210\u529f", Toast.LENGTH_SHORT).show()
+                },
+                onError = {
+                    Toast.makeText(context, "\u6570\u636e\u83b7\u53d6\u5931\u8d25", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+    )
 
-        // 需求8：统一采用单选弹窗
-        SingleChoiceDialogField(label = "选择房源 *", options = viewModel.availableProperties, selectedOption = propertyName, onOptionSelected = { propertyName = it })
+    LaunchedEffect(viewModel.availableProperties) {
+        if (propertyName.isBlank() && viewModel.availableProperties.isNotEmpty()) {
+            viewModel.updateEntryFormDraft { it.copy(propertyName = viewModel.availableProperties.first()) }
+        }
+    }
 
-        OutlinedTextField(value = tenantName, onValueChange = { tenantName = it }, label = { Text("租客姓名 *") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = tenantPhone, onValueChange = { tenantPhone = it }, label = { Text("手机号 (11位) *") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        // 需求6：证件号非必输
-        OutlinedTextField(value = tenantIdCard, onValueChange = { tenantIdCard = it }, label = { Text("证件号码 (选填)") }, modifier = Modifier.fillMaxWidth())
+    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+        if (viewModel.isInitialLoading && viewModel.availableProperties.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(ui.screenPadding)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(ui.itemSpacing)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "\u6b22\u8fce\u4f60 ${currentLoginUser?.loginName.orEmpty()}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp)
+                    )
+                    Button(
+                        onClick = onLogout,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                        modifier = if (isSeniorMode) {
+                            Modifier.defaultMinSize(minHeight = ui.compactButtonHeight)
+                        } else {
+                            Modifier
+                        }
+                    ) {
+                        Text("\u9000\u51fa\u767b\u5f55")
+                    }
+                }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value = monthlyRent, onValueChange = { monthlyRent = it }, label = { Text("月租金(元) *") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            OutlinedTextField(value = leaseMonths, onValueChange = { leaseMonths = it }, label = { Text("周期(月) *") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                viewModel.initError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+
+                SingleChoiceDialogField(
+                    label = "\u9009\u62e9\u623f\u6e90 *",
+                    options = viewModel.availableProperties,
+                    selectedOption = propertyName,
+                    onOptionSelected = { selected ->
+                        viewModel.updateEntryFormDraft { draftState -> draftState.copy(propertyName = selected) }
+                    }
+                )
+
+                OutlinedTextField(
+                    value = tenantName,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(tenantName = it) } },
+                    label = { Text("\u79df\u5ba2\u59d3\u540d *") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = tenantPhone,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(tenantPhone = it) } },
+                    label = { Text("\u624b\u673a\u53f7(11\u4f4d) *") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedTextField(
+                    value = tenantIdCard,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(tenantIdCard = it) } },
+                    label = { Text("\u8bc1\u4ef6\u53f7\u7801\uff08\u9009\u586b\uff09") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = monthlyRent,
+                        onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(monthlyRent = it) } },
+                        label = { Text("\u6708\u79df\u91d1(\u5143) *") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = propertyFee,
+                        onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(propertyFee = it) } },
+                        label = { Text("\u7269\u4e1a\u8d39(\u5143) *") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = depositAmount,
+                        onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(depositAmount = it) } },
+                        label = { Text("\u62bc\u91d1(\u5143)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    SingleChoiceDialogField(
+                        label = "\u62bc\u91d1\u72b6\u6001",
+                        options = depositStatusOptions,
+                        selectedOption = depositStatus,
+                        onOptionSelected = { selected ->
+                            viewModel.updateEntryFormDraft { draftState -> draftState.copy(depositStatus = selected) }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = leaseMonths,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(leaseMonths = it) } },
+                    label = { Text("\u79df\u671f(\u6708) *") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                NativeDatePickerField(
+                    label = "\u5408\u540c\u7b7e\u8ba2\u65e5\u671f *",
+                    selectedDate = contractDate,
+                    onDateSelected = { selectedDate ->
+                        viewModel.updateEntryFormDraft { draftState -> draftState.copy(contractDateText = selectedDate.toString()) }
+                    }
+                )
+                NativeDatePickerField(
+                    label = "\u79df\u91d1\u8d77\u59cb\u65e5 *",
+                    selectedDate = rentStartDate,
+                    onDateSelected = { selectedDate ->
+                        viewModel.updateEntryFormDraft { draftState -> draftState.copy(rentStartDateText = selectedDate.toString()) }
+                    }
+                )
+                OutlinedTextField(
+                    value = rentEndDate?.toString().orEmpty(),
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = false,
+                    label = { Text("\u79df\u91d1\u5230\u671f\u65e5") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+
+                SingleChoiceDialogField(
+                    label = "\u4ea4\u79df\u65b9\u5f0f *",
+                    options = paymentOptions.map { it.second },
+                    selectedOption = selectedFreq.second,
+                    onOptionSelected = { selectedName ->
+                        viewModel.updateEntryFormDraft { draftState ->
+                            draftState.copy(paymentFrequencyValue = paymentOptions.first { it.second == selectedName }.first)
+                        }
+                    }
+                )
+
+                OutlinedTextField(
+                    value = reminderDaysBeforeDue,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(reminderDaysBeforeDue = it) } },
+                    label = { Text("\u50ac\u6536\u63d0\u524d\u5929\u6570") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                OutlinedTextField(
+                    value = remark,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(remark = it) } },
+                    label = { Text("\u5907\u6ce8\uff08\u9009\u586b\uff09") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Button(
+                    onClick = {
+                        val rentInt = monthlyRent.toIntOrNull()
+                        val propertyFeeInt = propertyFee.toIntOrNull()
+                        val depositInt = depositAmount.toIntOrNull() ?: 0
+                        val leaseInt = leaseMonths.toIntOrNull()
+                        val reminderDaysInt = reminderDaysBeforeDue.toIntOrNull()
+
+                        if (viewModel.availableProperties.isEmpty()) {
+                            errorMessage = viewModel.initError ?: "\u6682\u65e0\u53ef\u7528\u623f\u6e90\uff0c\u8bf7\u5148\u786e\u8ba4 Cloud DB \u521d\u59cb\u5316"
+                            return@Button
+                        }
+                        if (tenantName.isBlank() || rentInt == null || propertyFeeInt == null || leaseInt == null || reminderDaysInt == null || propertyName.isBlank()) {
+                            errorMessage = "\u8bf7\u5b8c\u6574\u586b\u5199\u5fc5\u586b\u9879\uff0c\u4e14\u6708\u79df\u91d1\u3001\u7269\u4e1a\u8d39\u3001\u79df\u671f\u5fc5\u987b\u4e3a\u6570\u5b57"
+                            return@Button
+                        }
+                        if (reminderDaysInt < 0) {
+                            errorMessage = "\u50ac\u6536\u63d0\u524d\u5929\u6570\u4e0d\u80fd\u5c0f\u4e8e0"
+                            return@Button
+                        }
+                        if (depositAmount.toIntOrNull() == null && depositAmount.isNotBlank()) {
+                            errorMessage = "\u62bc\u91d1\u5fc5\u987b\u4e3a\u6570\u5b57"
+                            return@Button
+                        }
+                        if (!tenantPhone.matches(Regex("^\\d{11}$"))) {
+                            errorMessage = "\u624b\u673a\u53f7\u5fc5\u987b\u4e3a11\u4f4d\u6570\u5b57"
+                            return@Button
+                        }
+
+                        val hasOngoingContract = viewModel.rentals.any {
+                            it.propertyName == propertyName && !it.isCompleted
+                        }
+                        if (hasOngoingContract) {
+                            errorMessage = "\u8be5\u623f\u6e90\u5f53\u524d\u4ecd\u6709\u672a\u7ed3\u6e05\u5408\u540c"
+                            return@Button
+                        }
+
+                        viewModel.addRental(
+                            propertyName = propertyName,
+                            tenantName = tenantName,
+                            tenantPhone = tenantPhone,
+                            tenantIdCard = tenantIdCard,
+                            contractDate = contractDate,
+                            rentStartDate = rentStartDate,
+                            monthlyRent = rentInt,
+                            propertyFee = propertyFeeInt,
+                            depositAmount = depositInt,
+                            depositStatus = depositStatus,
+                            leaseMonths = leaseInt,
+                            paymentFrequency = selectedFreq.first,
+                            remark = remark,
+                            reminderDaysBeforeDue = reminderDaysInt,
+                            onSuccess = { showSuccessDialog = true },
+                            onError = { errorMessage = it }
+                        )
+                    },
+                    modifier = if (isSeniorMode) {
+                        Modifier
+                            .fillMaxWidth()
+                            .height(ui.buttonHeight)
+                    } else {
+                        Modifier.fillMaxWidth()
+                    }
+                ) {
+                    Text("\u786e\u8ba4\u5e76\u5f55\u5165")
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
         }
 
-        NativeDatePickerField(label = "合同签订日期 *", selectedDate = contractDate, onDateSelected = { contractDate = it })
-        NativeDatePickerField(label = "租金起始日 *", selectedDate = rentStartDate, onDateSelected = { rentStartDate = it })
-
-        SingleChoiceDialogField(label = "交租方式 *", options = paymentOptions.map { it.second }, selectedOption = selectedFreq.second, onOptionSelected = { selectedName -> selectedFreq = paymentOptions.first { it.second == selectedName } })
-
-        Button(
-            onClick = {
-                val rentInt = monthlyRent.toIntOrNull()
-                val leaseInt = leaseMonths.toIntOrNull()
-
-                if (tenantName.isBlank() || rentInt == null || leaseInt == null) { errorMessage = "请完整填写必输项，且租金必须为数字"; return@Button }
-                if (!tenantPhone.matches(Regex("^\\d{11}$"))) { errorMessage = "手机号必须为11位数字"; return@Button }
-
-                val hasOngoingContract = viewModel.rentals.any { it.propertyName == propertyName && !it.isCompleted }
-                if (hasOngoingContract) { errorMessage = "录入拦截：房源【$propertyName】当前仍有未结清的合同！"; return@Button }
-
-                viewModel.addRental(Rental(
-                    propertyName = propertyName, tenantName = tenantName, tenantPhone = tenantPhone,
-                    tenantIdCard = tenantIdCard, contractDate = contractDate, rentStartDate = rentStartDate,
-                    monthlyRent = rentInt, leaseMonths = leaseInt, paymentFrequency = selectedFreq.first
-                ))
-                showSuccessDialog = true
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("确认并录入") }
-        Spacer(modifier = Modifier.height(20.dp))
+        PullRefreshIndicator(
+            refreshing = viewModel.isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 
-    if (errorMessage.isNotEmpty()) AlertDialog(onDismissRequest = { errorMessage = "" }, title = { Text("录入失败") }, text = { Text(errorMessage) }, confirmButton = { TextButton(onClick = { errorMessage = "" }) { Text("修改") } })
-    if (showSuccessDialog) AlertDialog(onDismissRequest = { }, title = { Text("提示") }, text = { Text("已成功录入！") }, confirmButton = { TextButton(onClick = { showSuccessDialog = false; tenantName = ""; tenantPhone = ""; tenantIdCard = ""; monthlyRent = "" }) { Text("确定") } })
+    if (errorMessage.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { errorMessage = "" },
+            title = { Text("\u5f55\u5165\u5931\u8d25") },
+            text = { Text(errorMessage) },
+            confirmButton = {
+                TextButton(onClick = { errorMessage = "" }) {
+                    Text("\u4fee\u6539")
+                }
+            }
+        )
+    }
+
+    if (showSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("\u63d0\u793a") },
+            text = { Text("\u5df2\u6210\u529f\u5f55\u5165") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSuccessDialog = false
+                        viewModel.resetEntryFormDraft()
+                    }
+                ) {
+                    Text("\u786e\u5b9a")
+                }
+            }
+        )
+    }
 }
 
-// 提取的可复用组件：原生日期选择
 @Composable
 fun NativeDatePickerField(label: String, selectedDate: LocalDate, onDateSelected: (LocalDate) -> Unit) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
     val context = LocalContext.current
-    val calendar = Calendar.getInstance().apply { set(selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth) }
-    val dialog = DatePickerDialog(context, { _: DatePicker, y: Int, m: Int, d: Int -> onDateSelected(LocalDate.of(y, m + 1, d)) }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+    val calendar = Calendar.getInstance().apply {
+        set(selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth)
+    }
+    val dialog = DatePickerDialog(
+        context,
+        { _: DatePicker, y: Int, m: Int, d: Int -> onDateSelected(LocalDate.of(y, m + 1, d)) },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
 
     Box(modifier = Modifier.fillMaxWidth().clickable { dialog.show() }) {
-        OutlinedTextField(value = selectedDate.toString(), onValueChange = {}, readOnly = true, label = { Text(label) }, trailingIcon = { Icon(Icons.Default.DateRange, "") }, enabled = false, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline, disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant))
+        OutlinedTextField(
+            value = selectedDate.toString(),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "") },
+            enabled = false,
+            modifier = if (isSeniorMode) {
+                Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = ui.fieldMinHeight)
+            } else {
+                Modifier.fillMaxWidth()
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
     }
 }
 
-// 提取的可复用组件：单选弹窗菜单
 @Composable
-fun SingleChoiceDialogField(label: String, options: List<String>, selectedOption: String, onOptionSelected: (String) -> Unit) {
+fun SingleChoiceDialogField(
+    label: String,
+    options: List<String>,
+    selectedOption: String,
+    onOptionSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val ui = LocalAppDimensions.current
+    val isSeniorMode = LocalIsSeniorMode.current
     var showDialog by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxWidth().clickable { showDialog = true }) {
-        OutlinedTextField(value = selectedOption, onValueChange = {}, readOnly = true, label = { Text(label) }, enabled = false, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline, disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant))
+    Box(modifier = modifier.fillMaxWidth().clickable { showDialog = true }) {
+        OutlinedTextField(
+            value = selectedOption,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            enabled = false,
+            modifier = if (isSeniorMode) {
+                Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = ui.fieldMinHeight)
+            } else {
+                Modifier.fillMaxWidth()
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
     }
 
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("请选择 $label") },
+            title = { Text("\u8bf7\u9009\u62e9 $label") },
             text = {
                 LazyColumn {
                     items(options) { option ->
-                        Row(modifier = Modifier.fillMaxWidth().clickable { onOptionSelected(option); showDialog = false }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onOptionSelected(option)
+                                    showDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             RadioButton(selected = option == selectedOption, onClick = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(option)
@@ -124,7 +498,11 @@ fun SingleChoiceDialogField(label: String, options: List<String>, selectedOption
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showDialog = false }) { Text("取消") } }
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("\u53d6\u6d88")
+                }
+            }
         )
     }
 }

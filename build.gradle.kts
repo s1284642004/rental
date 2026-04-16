@@ -12,6 +12,7 @@ buildscript {
         }
     }
     dependencies {
-        classpath("com.huawei.agconnect:agcp:1.9.5.302")
+        val agcpVersion = "1.9.5.302"
+        classpath("com.huawei.agconnect:agcp:$agcpVersion")
     }
 }

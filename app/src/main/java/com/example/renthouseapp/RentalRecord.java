@@ -15,7 +15,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType RentalRecord.
  *
- * @since 2026-04-03
+ * @since 2026-04-16
  */
 @PrimaryKeys({"id"})
 public final class RentalRecord extends CloudDBZoneObject {
@@ -46,10 +46,34 @@ public final class RentalRecord extends CloudDBZoneObject {
     @DefaultValue(booleanValue = false)
     private Boolean isCompleted;
 
+    private String createdBy;
+
+    private Date createdAt;
+
+    private String updatedBy;
+
+    private Date updatedAt;
+
+    private Integer depositAmount;
+
+    @DefaultValue(stringValue = "未支付")
+    private String depositStatus;
+
+    private Integer propertyFee;
+
+    private String remark;
+
+    private Date rentEndDate;
+
+    @DefaultValue(intValue = 15)
+    private Integer reminderDaysBeforeDue;
+
     public RentalRecord() {
         super(RentalRecord.class);
         this.tenantPhone = "";
         this.isCompleted = false;
+        this.depositStatus = "未支付";
+        this.reminderDaysBeforeDue = 15;
     }
 
     public void setId(String id) {
@@ -146,6 +170,86 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     public Boolean getIsCompleted() {
         return isCompleted;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedAt(Date createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Date getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public String getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedAt(Date updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Date getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setDepositAmount(Integer depositAmount) {
+        this.depositAmount = depositAmount;
+    }
+
+    public Integer getDepositAmount() {
+        return depositAmount;
+    }
+
+    public void setDepositStatus(String depositStatus) {
+        this.depositStatus = depositStatus;
+    }
+
+    public String getDepositStatus() {
+        return depositStatus;
+    }
+
+    public void setPropertyFee(Integer propertyFee) {
+        this.propertyFee = propertyFee;
+    }
+
+    public Integer getPropertyFee() {
+        return propertyFee;
+    }
+
+    public void setRemark(String remark) {
+        this.remark = remark;
+    }
+
+    public String getRemark() {
+        return remark;
+    }
+
+    public void setRentEndDate(Date rentEndDate) {
+        this.rentEndDate = rentEndDate;
+    }
+
+    public Date getRentEndDate() {
+        return rentEndDate;
+    }
+
+    public void setReminderDaysBeforeDue(Integer reminderDaysBeforeDue) {
+        this.reminderDaysBeforeDue = reminderDaysBeforeDue;
+    }
+
+    public Integer getReminderDaysBeforeDue() {
+        return reminderDaysBeforeDue;
     }
 
 }
