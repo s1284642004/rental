@@ -54,6 +54,9 @@ class RentalViewModel : ViewModel() {
     var isLoggingIn by mutableStateOf(false)
         private set
 
+    var isMigratingData by mutableStateOf(false)
+        private set
+
     var entryFormDraft by mutableStateOf(EntryFormDraft())
         private set
 
@@ -205,6 +208,189 @@ class RentalViewModel : ViewModel() {
         loadData(userRefresh = true, onSuccess = {}, onError = {})
     }
 
+    fun migrateDatabaseSchema(
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (!isCloudDbReady) {
+            onError("Cloud DB 尚未就绪")
+            return
+        }
+        val repo = repository ?: run {
+            onError("Cloud DB 尚未初始化")
+            return
+        }
+        if (isMigratingData) return
+        isMigratingData = true
+
+        repo.queryAllRentalRecords(
+            onSuccess = { rentals ->
+                repo.queryAllPaymentRecords(
+                    onSuccess = { payments ->
+                        val groupedPayments = payments.groupBy { it.rentalId.orEmpty() }
+                        val updatedRentals = rentals.map { rental ->
+                            val startDate = rental.rentStartDate?.toLocalDate() ?: LocalDate.now()
+                            val leaseMonths = rental.leaseMonths ?: 0
+                            rental.apply {
+                                if (rentEndDate == null) {
+                                    rentEndDate = calculateRentEndDate(startDate, leaseMonths).toDate()
+                                }
+                                if (reminderDaysBeforeDue == null || reminderDaysBeforeDue!! < 0) {
+                                    reminderDaysBeforeDue = 15
+                                }
+                                if (remark == null) {
+                                    remark = ""
+                                }
+                                if (tenantPhone.isNullOrBlank()) {
+                                    tenantPhone = ""
+                                }
+                                if (isCompleted == null) {
+                                    isCompleted = false
+                                }
+                                applyUpdateAudit(this)
+                            }
+                        }
+
+                        val updatedPayments = payments.map { payment ->
+                            val rental = rentals.firstOrNull { it.id == payment.rentalId }
+                            val monthsInPeriod = (payment.monthsInPeriod
+                                ?: resolveMonthsPerPeriod(
+                                    paymentFrequency = rental?.paymentFrequency ?: 1,
+                                    leaseMonths = rental?.leaseMonths ?: 1
+                                )).coerceAtLeast(1)
+                            val monthlyRentSnapshot = payment.monthlyRentSnapshot
+                                ?: ((payment.rentAmount ?: payment.amount ?: 0) / monthsInPeriod)
+                            val dueDate = payment.dueDate?.toLocalDate() ?: LocalDate.now()
+                            val reminderDays = (rental?.reminderDaysBeforeDue ?: 15).coerceAtLeast(0)
+
+                            payment.apply {
+                                this.monthsInPeriod = monthsInPeriod
+                                this.monthlyRentSnapshot = monthlyRentSnapshot
+                                if (remark == null) {
+                                    remark = ""
+                                }
+                                if (rentAmount == null) {
+                                    rentAmount = monthlyRentSnapshot * monthsInPeriod
+                                }
+                                if (propertyFeeAmount == null) {
+                                    propertyFeeAmount = ((amount ?: 0) - (rentAmount ?: 0)).coerceAtLeast(0)
+                                }
+                                if (amount == null) {
+                                    amount = (rentAmount ?: 0) + (propertyFeeAmount ?: 0)
+                                }
+                                if (reminderDate == null) {
+                                    reminderDate = dueDate.minusDays(reminderDays.toLong()).toDate()
+                                }
+                                applyUpdateAudit(this)
+                            }
+                        }
+
+                        upsertRentalMigrations(
+                            repo = repo,
+                            rentals = updatedRentals,
+                            index = 0,
+                            onDone = {
+                                upsertPaymentMigrations(
+                                    repo = repo,
+                                    payments = updatedPayments,
+                                    index = 0,
+                                    onDone = {
+                                        isMigratingData = false
+                                        refreshAllData()
+                                        onSuccess("数据库更新完成，旧数据已兼容到当前结构")
+                                    },
+                                    onError = { error ->
+                                        isMigratingData = false
+                                        val msg = error.message ?: "收款计划迁移失败"
+                                        initError = msg
+                                        onError(msg)
+                                    }
+                                )
+                            },
+                            onError = { error ->
+                                isMigratingData = false
+                                val msg = error.message ?: "合同迁移失败"
+                                initError = msg
+                                onError(msg)
+                            }
+                        )
+                    },
+                    onError = {
+                        isMigratingData = false
+                        val msg = it.message ?: "收款计划读取失败"
+                        initError = msg
+                        onError(msg)
+                    }
+                )
+            },
+            onError = {
+                isMigratingData = false
+                val msg = it.message ?: "合同读取失败"
+                initError = msg
+                onError(msg)
+            }
+        )
+    }
+
+    fun cleanupDanglingPaymentRecords(
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (!isCloudDbReady) {
+            onError("Cloud DB 灏氭湭灏辩华")
+            return
+        }
+        val repo = repository ?: run {
+            onError("Cloud DB 灏氭湭鍒濆鍖?")
+            return
+        }
+        if (isMigratingData) return
+        isMigratingData = true
+
+        repo.queryAllRentalRecords(
+            onSuccess = { rentals ->
+                val validRentalIds = rentals.map { it.id }.toSet()
+                repo.queryAllPaymentRecords(
+                    onSuccess = { payments ->
+                        val danglingPayments = payments.filter { payment ->
+                            payment.rentalId.isNullOrBlank() || payment.rentalId !in validRentalIds
+                        }
+
+                        deletePaymentsSequentially(
+                            repo = repo,
+                            records = danglingPayments,
+                            index = 0,
+                            onError = {
+                                isMigratingData = false
+                                val msg = initError ?: "垃圾收款记录清理失败"
+                                onError(msg)
+                            },
+                            onDone = {
+                                isMigratingData = false
+                                refreshAllData()
+                                onSuccess(
+                                    "合同表共 ${rentals.size} 条，已清理 ${danglingPayments.size} 条无效收款记录"
+                                )
+                            }
+                        )
+                    },
+                    onError = {
+                        isMigratingData = false
+                        val msg = it.message ?: "收款记录读取失败"
+                        initError = msg
+                        onError(msg)
+                    }
+                )
+            },
+            onError = {
+                isMigratingData = false
+                val msg = it.message ?: "合同读取失败"
+                initError = msg
+                onError(msg)
+            }
+        )
+    }
+
     private fun refreshPayees() {
         val repo = repository ?: return
         repo.queryAllLoginUsers(
@@ -321,6 +507,8 @@ class RentalViewModel : ViewModel() {
         depositStatus: String,
         leaseMonths: Int,
         paymentFrequency: Int,
+        remark: String,
+        reminderDaysBeforeDue: Int,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -334,13 +522,15 @@ class RentalViewModel : ViewModel() {
                     contractDate = contractDate
                 )
                 val schedules = generateSchedule(
+                    rentalId = rentalId,
                     propertyId = property.id,
                     contractDate = contractDate,
                     start = rentStartDate,
                     rent = monthlyRent,
                     propertyFee = propertyFee,
                     months = leaseMonths,
-                    freq = paymentFrequency
+                    freq = paymentFrequency,
+                    reminderDaysBeforeDue = reminderDaysBeforeDue
                 )
 
                 repo.queryRentalRecordById(
@@ -366,6 +556,9 @@ class RentalViewModel : ViewModel() {
                             this.depositStatus = depositStatus
                             this.leaseMonths = leaseMonths
                             this.paymentFrequency = paymentFrequency
+                            this.remark = remark
+                            this.rentEndDate = calculateRentEndDate(rentStartDate, leaseMonths).toDate()
+                            this.reminderDaysBeforeDue = reminderDaysBeforeDue
                             isCompleted = false
                         }
                         applyCreateAudit(rental)
@@ -473,78 +666,377 @@ class RentalViewModel : ViewModel() {
         )
     }
 
-    fun updateRentalContractInfo(
+/*    fun updateRentalContractInfo(
         rentalId: String,
+        newPropertyName: String,
         newName: String,
         newPhone: String,
         newIdCard: String,
+        newContractDate: LocalDate,
+        newRentStartDate: LocalDate,
         newMonthlyRent: Int,
         newPropertyFee: Int,
         newDepositAmount: Int,
         newDepositStatus: String,
-        onSuccess: () -> Unit = {}
+        newLeaseMonths: Int,
+        newPaymentFrequency: Int,
+        newRemark: String,
+        newReminderDaysBeforeDue: Int,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
     ) {
         val repo = repository ?: return
         repo.queryRentalRecordById(
             rentalId,
             onSuccess = { record ->
                 val existing = record ?: return@queryRentalRecordById
-                existing.tenantName = newName
-                existing.tenantPhone = newPhone
-                existing.tenantIdCard = newIdCard
-                existing.monthlyRent = newMonthlyRent
-                existing.propertyFee = newPropertyFee
-                existing.depositAmount = newDepositAmount
-                existing.depositStatus = newDepositStatus
-                applyUpdateAudit(existing)
-
                 repo.queryPaymentRecordsByRentalId(
                     rentalId,
                     onSuccess = { payments ->
-                        val updatedUnpaidPayments = payments
-                            .filter { it.isPaid != true }
-                            .map { payment ->
-                                payment.apply {
-                                    val monthsPerPeriod = resolveMonthsPerPeriod(
-                                        paymentFrequency = existing.paymentFrequency ?: 0,
-                                        leaseMonths = existing.leaseMonths ?: 0
-                                    )
-                                    rentAmount = newMonthlyRent * monthsPerPeriod
-                                    propertyFeeAmount = newPropertyFee * monthsPerPeriod
-                                    amount = (rentAmount ?: 0) + (propertyFeeAmount ?: 0)
-                                    applyUpdateAudit(this)
-                                }
-                            }
+                        ensureProperty(
+                            propertyName = newPropertyName,
+                            onResolved = { targetProperty ->
+                                val oldRentalId = existing.id
+                                val newRentalId = buildRentalRecordId(targetProperty.id, newContractDate)
+                                repo.queryRentalRecordById(
+                                    newRentalId,
+                                    onSuccess = { conflict ->
+                                        if (newRentalId != oldRentalId && conflict != null) {
+                                            onError("已存在相同房源和签约日期的合同")
+                                            return@queryRentalRecordById
+                                        }
 
-                        repo.upsertRentalRecord(
-                            existing,
-                            onSuccess = {
-                                upsertSchedules(
-                                    repo = repo,
-                                    records = updatedUnpaidPayments,
-                                    index = 0,
-                                    onDone = {
-                                        refreshAllData()
-                                        onSuccess()
+                                        val updatedRental = RentalRecord().apply {
+                                            id = newRentalId
+                                            propertyId = targetProperty.id
+                                            propertyName = targetProperty.propertyName
+                                            tenantName = newName
+                                            tenantPhone = newPhone
+                                            tenantIdCard = newIdCard
+                                            contractDate = newContractDate.toDate()
+                                            rentStartDate = newRentStartDate.toDate()
+                                            rentEndDate = calculateRentEndDate(newRentStartDate, newLeaseMonths).toDate()
+                                            monthlyRent = newMonthlyRent
+                                            propertyFee = newPropertyFee
+                                            depositAmount = newDepositAmount
+                                            depositStatus = newDepositStatus
+                                            leaseMonths = newLeaseMonths
+                                            paymentFrequency = newPaymentFrequency
+                                            remark = newRemark
+                                            reminderDaysBeforeDue = newReminderDaysBeforeDue
+                                            isCompleted = false
+                                            createdBy = existing.createdBy
+                                            createdAt = existing.createdAt
+                                        }
+                                        applyUpdateAudit(updatedRental)
+
+                                        val regeneratedPayments = generateSchedule(
+                                            rentalId = newRentalId,
+                                            propertyId = targetProperty.id,
+                                            contractDate = newContractDate,
+                                            start = newRentStartDate,
+                                            rent = newMonthlyRent,
+                                            propertyFee = newPropertyFee,
+                                            months = newLeaseMonths,
+                                            freq = newPaymentFrequency,
+                                            reminderDaysBeforeDue = newReminderDaysBeforeDue
+                                        ).map { newPayment ->
+                                            val matchedOldPayment = payments.firstOrNull {
+                                                (it.periodNumber ?: 0) == (newPayment.periodNumber ?: 0)
+                                            }
+                                            if (matchedOldPayment != null) {
+                                                newPayment.isPaid = matchedOldPayment.isPaid
+                                                newPayment.payee = matchedOldPayment.payee
+                                                newPayment.paymentMethod = matchedOldPayment.paymentMethod
+                                                newPayment.receiptDate = matchedOldPayment.receiptDate
+                                                newPayment.createdBy = matchedOldPayment.createdBy
+                                                newPayment.createdAt = matchedOldPayment.createdAt
+                                                if (matchedOldPayment.isPaid == true) {
+                                                    newPayment.updatedBy = matchedOldPayment.updatedBy
+                                                    newPayment.updatedAt = matchedOldPayment.updatedAt
+                                                }
+                                            }
+                                            newPayment
+                                        }
+
+                                        val finalizeProperties = {
+                                            syncEditedProperties(
+                                                oldRentalId = oldRentalId.orEmpty(),
+                                                oldPropertyId = existing.propertyId,
+                                                oldPropertyName = existing.propertyName,
+                                                newProperty = targetProperty
+                                            )
+                                            refreshAllData()
+                                            onSuccess()
+                                        }
+
+                                        val persistRentalAndPayments = {
+                                            repo.upsertRentalRecord(
+                                                updatedRental,
+                                                onSuccess = {
+                                                    upsertSchedules(
+                                                        repo = repo,
+                                                        records = regeneratedPayments,
+                                                        index = 0,
+                                                        onDone = {
+                                                            if (newRentalId == oldRentalId) {
+                                                                finalizeProperties()
+                                                            } else {
+                                                                deletePaymentsSequentially(repo, payments, 0) {
+                                                                    val oldRental = RentalRecord().apply {
+                                                                        id = oldRentalId
+                                                                        propertyId = existing.propertyId
+                                                                        propertyName = existing.propertyName
+                                                                    }
+                                                                    repo.deleteRentalRecord(
+                                                                        oldRental,
+                                                                        onSuccess = { finalizeProperties() },
+                                                                        onError = {
+                                                                            val msg = it.message ?: "旧合同删除失败"
+                                                                            initError = msg
+                                                                            onError(msg)
+                                                                        }
+                                                                    )
+                                                                }
+                                                            }
+                                                        },
+                                                        onError = {
+                                                            val msg = it.message ?: "收款计划保存失败"
+                                                            initError = msg
+                                                            onError(msg)
+                                }
+                                                    )
+                                                },
+                                                onError = {
+                                                    val msg = it.message ?: "合同保存失败"
+                                                    initError = msg
+                                                    onError(msg)
+                                                }
+                                            )
+                                        }
+
+                                        if (newRentalId == oldRentalId) {
+                                            deletePaymentsSequentially(repo, payments, 0) {
+                                                persistRentalAndPayments()
+                                            }
+                                        } else {
+                                            persistRentalAndPayments()
+                                        }
                                     },
-                                    onError = { initError = it.message }
+                                    onError = {
+                                        val msg = it.message ?: "合同校验失败"
+                                        initError = msg
+                                        onError(msg)
+                                    }
                                 )
                             },
-                            onError = { initError = it.message }
+                            onError = onError
                         )
                     },
-                    onError = { initError = it.message }
+                    onError = {
+                        val msg = it.message ?: "收款计划获取失败"
+                        initError = msg
+                        onError(msg)
+                    }
                 )
             },
-            onError = { initError = it.message }
+            onError = {
+                val msg = it.message ?: "合同获取失败"
+                initError = msg
+                onError(msg)
+            }
         )
     }
 
-    fun updatePaymentAmount(rentalId: String, paymentId: String, newAmount: Int) {
+*/
+
+    fun updateRentalContractInfo(
+        rentalId: String,
+        newPropertyName: String,
+        newName: String,
+        newPhone: String,
+        newIdCard: String,
+        newContractDate: LocalDate,
+        newRentStartDate: LocalDate,
+        newMonthlyRent: Int,
+        newPropertyFee: Int,
+        newDepositAmount: Int,
+        newDepositStatus: String,
+        newLeaseMonths: Int,
+        newPaymentFrequency: Int,
+        newRemark: String,
+        newReminderDaysBeforeDue: Int,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val repo = repository ?: return
+        repo.queryRentalRecordById(
+            rentalId,
+            onSuccess = { record ->
+                val existing = record ?: return@queryRentalRecordById
+                repo.queryPaymentRecordsByRentalId(
+                    rentalId,
+                    onSuccess = { payments ->
+                        ensureProperty(
+                            propertyName = newPropertyName,
+                            onResolved = { targetProperty ->
+                                val oldRentalId = existing.id.orEmpty()
+                                val newRentalId = buildRentalRecordId(targetProperty.id, newContractDate)
+                                repo.queryRentalRecordById(
+                                    newRentalId,
+                                    onSuccess = { conflict ->
+                                        if (newRentalId != oldRentalId && conflict != null) {
+                                            onError("已存在相同房源和签约日期的合同")
+                                            return@queryRentalRecordById
+                                        }
+
+                                        val updatedRental = RentalRecord().apply {
+                                            id = newRentalId
+                                            propertyId = targetProperty.id
+                                            propertyName = targetProperty.propertyName
+                                            tenantName = newName
+                                            tenantPhone = newPhone
+                                            tenantIdCard = newIdCard
+                                            contractDate = newContractDate.toDate()
+                                            rentStartDate = newRentStartDate.toDate()
+                                            rentEndDate = calculateRentEndDate(newRentStartDate, newLeaseMonths).toDate()
+                                            monthlyRent = newMonthlyRent
+                                            propertyFee = newPropertyFee
+                                            depositAmount = newDepositAmount
+                                            depositStatus = newDepositStatus
+                                            leaseMonths = newLeaseMonths
+                                            paymentFrequency = newPaymentFrequency
+                                            remark = newRemark
+                                            reminderDaysBeforeDue = newReminderDaysBeforeDue
+                                            isCompleted = false
+                                            createdBy = existing.createdBy
+                                            createdAt = existing.createdAt
+                                        }
+                                        applyUpdateAudit(updatedRental)
+
+                                        val regeneratedPayments = generateSchedule(
+                                            rentalId = newRentalId,
+                                            propertyId = targetProperty.id,
+                                            contractDate = newContractDate,
+                                            start = newRentStartDate,
+                                            rent = newMonthlyRent,
+                                            propertyFee = newPropertyFee,
+                                            months = newLeaseMonths,
+                                            freq = newPaymentFrequency,
+                                            reminderDaysBeforeDue = newReminderDaysBeforeDue
+                                        ).map { newPayment ->
+                                            val oldPayment = payments.firstOrNull {
+                                                (it.periodNumber ?: 0) == (newPayment.periodNumber ?: 0)
+                                            }
+                                            if (oldPayment != null) {
+                                                newPayment.isPaid = oldPayment.isPaid
+                                                newPayment.payee = oldPayment.payee
+                                                newPayment.paymentMethod = oldPayment.paymentMethod
+                                                newPayment.receiptDate = oldPayment.receiptDate
+                                                newPayment.createdBy = oldPayment.createdBy
+                                                newPayment.createdAt = oldPayment.createdAt
+                                                if (oldPayment.isPaid == true) {
+                                                    newPayment.updatedBy = oldPayment.updatedBy
+                                                    newPayment.updatedAt = oldPayment.updatedAt
+                                                }
+                                            }
+                                            newPayment
+                                        }
+
+                                        val finishUpdate = {
+                                            syncEditedProperties(
+                                                oldRentalId = oldRentalId,
+                                                oldPropertyId = existing.propertyId,
+                                                oldPropertyName = existing.propertyName,
+                                                newProperty = targetProperty
+                                            )
+                                            refreshAllData()
+                                            onSuccess()
+                                        }
+
+                                        val persistNewData = {
+                                            repo.upsertRentalRecord(
+                                                updatedRental,
+                                                onSuccess = {
+                                                    upsertSchedules(
+                                                        repo = repo,
+                                                        records = regeneratedPayments,
+                                                        index = 0,
+                                                        onDone = {
+                                                            if (newRentalId == oldRentalId) {
+                                                                finishUpdate()
+                                                            } else {
+                                                                deletePaymentsSequentially(repo, payments, 0) {
+                                                                    val oldRental = RentalRecord().apply {
+                                                                        id = oldRentalId
+                                                                        propertyId = existing.propertyId
+                                                                        propertyName = existing.propertyName
+                                                                    }
+                                                                    repo.deleteRentalRecord(
+                                                                        oldRental,
+                                                                        onSuccess = { finishUpdate() },
+                                                                        onError = {
+                                                                            val msg = it.message ?: "旧合同删除失败"
+                                                                            initError = msg
+                                                                            onError(msg)
+                                                                        }
+                                                                    )
+                                                                }
+                                                            }
+                                                        },
+                                                        onError = {
+                                                            val msg = it.message ?: "收款计划保存失败"
+                                                            initError = msg
+                                                            onError(msg)
+                                                        }
+                                                    )
+                                                },
+                                                onError = {
+                                                    val msg = it.message ?: "合同保存失败"
+                                                    initError = msg
+                                                    onError(msg)
+                                                }
+                                            )
+                                        }
+
+                                        if (newRentalId == oldRentalId) {
+                                            deletePaymentsSequentially(repo, payments, 0) { persistNewData() }
+                                        } else {
+                                            persistNewData()
+                                        }
+                                    },
+                                    onError = {
+                                        val msg = it.message ?: "合同校验失败"
+                                        initError = msg
+                                        onError(msg)
+                                    }
+                                )
+                            },
+                            onError = onError
+                        )
+                    },
+                    onError = {
+                        val msg = it.message ?: "收款计划获取失败"
+                        initError = msg
+                        onError(msg)
+                    }
+                )
+            },
+            onError = {
+                val msg = it.message ?: "合同获取失败"
+                initError = msg
+                onError(msg)
+            }
+        )
+    }
+
+    fun updatePaymentAmount(rentalId: String, paymentId: String, newMonthlyRent: Int) {
         updatePayment(rentalId, paymentId, onSuccess = {}) { payment ->
+            val monthsInPeriod = payment.monthsInPeriod ?: 1
             val propertyFeeAmount = payment.propertyFeeAmount ?: 0
-            payment.amount = newAmount
-            payment.rentAmount = (newAmount - propertyFeeAmount).coerceAtLeast(0)
+            payment.monthlyRentSnapshot = newMonthlyRent
+            payment.rentAmount = newMonthlyRent * monthsInPeriod
+            payment.amount = (payment.rentAmount ?: 0) + propertyFeeAmount
         }
     }
 
@@ -659,6 +1151,41 @@ class RentalViewModel : ViewModel() {
         )
     }
 
+    private fun syncEditedProperties(
+        oldRentalId: String,
+        oldPropertyId: String?,
+        oldPropertyName: String?,
+        newProperty: Property
+    ) {
+        val repo = repository ?: return
+        newProperty.isAvailable = false
+        repo.upsertProperty(newProperty, onSuccess = {}, onError = { initError = it.message })
+
+        val oldId = oldPropertyId.orEmpty()
+        val oldName = oldPropertyName.orEmpty()
+        if (oldId == newProperty.id && oldName == newProperty.propertyName) return
+
+        val stillOccupied = _rentals.any {
+            it.id != oldRentalId &&
+                !it.isCompleted &&
+                (it.propertyId == oldId || it.propertyName == oldName)
+        }
+        if (stillOccupied) return
+
+        repo.queryAllProperties(
+            onSuccess = { properties ->
+                val oldProperty = properties.firstOrNull {
+                    (oldId.isNotBlank() && it.id == oldId) ||
+                        (oldName.isNotBlank() && it.propertyName == oldName)
+                } ?: return@queryAllProperties
+
+                oldProperty.isAvailable = true
+                repo.upsertProperty(oldProperty, onSuccess = {}, onError = { initError = it.message })
+            },
+            onError = { initError = it.message }
+        )
+    }
+
     private fun upsertSchedules(
         repo: CloudRentalRepository,
         records: List<PaymentRecord>,
@@ -677,10 +1204,47 @@ class RentalViewModel : ViewModel() {
         )
     }
 
+    private fun upsertRentalMigrations(
+        repo: CloudRentalRepository,
+        rentals: List<RentalRecord>,
+        index: Int,
+        onDone: () -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        if (index >= rentals.size) {
+            onDone()
+            return
+        }
+        repo.upsertRentalRecord(
+            rentals[index],
+            onSuccess = { upsertRentalMigrations(repo, rentals, index + 1, onDone, onError) },
+            onError = onError
+        )
+    }
+
+    private fun upsertPaymentMigrations(
+        repo: CloudRentalRepository,
+        payments: List<PaymentRecord>,
+        index: Int,
+        onDone: () -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        if (index >= payments.size) {
+            onDone()
+            return
+        }
+        repo.upsertPaymentRecord(
+            payments[index],
+            onSuccess = { upsertPaymentMigrations(repo, payments, index + 1, onDone, onError) },
+            onError = onError
+        )
+    }
+
     private fun deletePaymentsSequentially(
         repo: CloudRentalRepository,
         records: List<PaymentRecord>,
         index: Int,
+        onError: (() -> Unit)? = null,
         onDone: () -> Unit
     ) {
         if (index >= records.size) {
@@ -689,22 +1253,24 @@ class RentalViewModel : ViewModel() {
         }
         repo.deletePaymentRecord(
             records[index],
-            onSuccess = { deletePaymentsSequentially(repo, records, index + 1, onDone) },
+            onSuccess = { deletePaymentsSequentially(repo, records, index + 1, onError, onDone) },
             onError = {
                 initError = it.message
-                onDone()
+                onError?.invoke()
             }
         )
     }
 
     private fun generateSchedule(
+        rentalId: String,
         propertyId: String,
         contractDate: LocalDate,
         start: LocalDate,
         rent: Int,
         propertyFee: Int,
         months: Int,
-        freq: Int
+        freq: Int,
+        reminderDaysBeforeDue: Int
     ): List<PaymentRecord> {
         val schedule = mutableListOf<PaymentRecord>()
         val actualFreq = resolveMonthsPerPeriod(freq, months)
@@ -712,7 +1278,6 @@ class RentalViewModel : ViewModel() {
         val rentAmountPerPeriod = rent * actualFreq
         val propertyFeeAmountPerPeriod = propertyFee * actualFreq
         val amountPerPeriod = rentAmountPerPeriod + propertyFeeAmountPerPeriod
-        val rentalId = buildRentalRecordId(propertyId, contractDate)
 
         for (i in 0 until totalPeriods) {
             val periodNumber = i + 1
@@ -729,11 +1294,14 @@ class RentalViewModel : ViewModel() {
                     this.periodNumber = periodNumber
                     this.rentAmount = rentAmountPerPeriod
                     this.propertyFeeAmount = propertyFeeAmountPerPeriod
+                    this.monthlyRentSnapshot = rent
+                    this.monthsInPeriod = actualFreq
+                    this.remark = null
                     amount = amountPerPeriod
                     periodStartDate = periodStart.toDate()
                     periodEndDate = periodEnd.toDate()
                     dueDate = periodStart.toDate()
-                    reminderDate = periodStart.minusDays(15).toDate()
+                    reminderDate = periodStart.minusDays(reminderDaysBeforeDue.toLong()).toDate()
                     isPaid = false
                     applyCreateAudit(this)
                 }
@@ -744,6 +1312,10 @@ class RentalViewModel : ViewModel() {
 
     private fun resolveMonthsPerPeriod(paymentFrequency: Int, leaseMonths: Int): Int {
         return if (paymentFrequency == 0) leaseMonths else paymentFrequency
+    }
+
+    private fun calculateRentEndDate(rentStartDate: LocalDate, leaseMonths: Int): LocalDate {
+        return rentStartDate.plusMonths(leaseMonths.toLong()).minusDays(1)
     }
 
     private fun buildRentalRecordId(
@@ -819,10 +1391,14 @@ class RentalViewModel : ViewModel() {
             tenantIdCard = tenantIdCard.orEmpty(),
             contractDate = contractDate?.toLocalDate() ?: LocalDate.now(),
             rentStartDate = rentStartDate?.toLocalDate() ?: LocalDate.now(),
+            rentEndDate = rentEndDate?.toLocalDate()
+                ?: calculateRentEndDate(rentStartDate?.toLocalDate() ?: LocalDate.now(), leaseMonths ?: 0),
             monthlyRent = monthlyRent ?: 0,
             propertyFee = propertyFee ?: 0,
             depositAmount = depositAmount ?: 0,
             depositStatus = depositStatus.orEmpty().ifBlank { "\u672a\u652f\u4ed8" },
+            remark = remark.orEmpty(),
+            reminderDaysBeforeDue = (reminderDaysBeforeDue ?: 15).coerceAtLeast(0),
             leaseMonths = leaseMonths ?: 0,
             paymentFrequency = paymentFrequency ?: 0,
             isCompleted = isCompleted == true,
@@ -842,6 +1418,9 @@ class RentalViewModel : ViewModel() {
             amount = amount ?: 0,
             rentAmount = rentAmount ?: (amount ?: 0),
             propertyFeeAmount = propertyFeeAmount ?: 0,
+            monthlyRentSnapshot = monthlyRentSnapshot ?: ((rentAmount ?: amount ?: 0) / (monthsInPeriod ?: 1).coerceAtLeast(1)),
+            monthsInPeriod = (monthsInPeriod ?: 1).coerceAtLeast(1),
+            remark = remark.orEmpty(),
             periodStartDate = periodStartDate?.toLocalDate() ?: LocalDate.now(),
             periodEndDate = periodEndDate?.toLocalDate() ?: LocalDate.now(),
             dueDate = dueDate?.toLocalDate() ?: LocalDate.now(),

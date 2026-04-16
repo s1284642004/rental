@@ -1,7 +1,9 @@
 package com.example.renthouseapp
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.CalendarContract
+import android.content.ActivityNotFoundException
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,9 +21,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -38,12 +43,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,9 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -65,9 +70,23 @@ import java.util.Calendar
 private const val DEFAULT_PAYEE_NAME = "罗琪琛"
 private val DEPOSIT_STATUS_OPTIONS = listOf("未支付", "已支付", "已退还", "已扣除")
 
+private val PAYMENT_OPTIONS = listOf(
+    1 to "\u6bcf\u6708\u4e00\u4ed8",
+    3 to "\u5b63\u4ed8(3\u4e2a\u6708)",
+    6 to "\u534a\u5e74\u4ed8",
+    12 to "\u5e74\u4ed8",
+    0 to "\u4e00\u6b21\u6027\u4ed8\u6e05"
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
-fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick: () -> Unit) {
+fun RentalDetailScreen(
+    rental: UiRental,
+    viewModel: RentalViewModel,
+    onBackClick: () -> Unit,
+    autoOpenRenewDialog: Boolean = false,
+    onAutoOpenRenewHandled: () -> Unit = {}
+) {
     val context = LocalContext.current
     val payeeOptions = remember(viewModel.availablePayees, viewModel.currentLoginUser) {
         val queriedPayees = viewModel.availablePayees
@@ -87,21 +106,79 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
     var showEditDialog by remember { mutableStateOf(false) }
     var showEditAmountDialog by remember { mutableStateOf(false) }
     var editingPaymentId by remember { mutableStateOf<String?>(null) }
-    var newAmountInput by remember { mutableStateOf("") }
+    var editingPayment by remember { mutableStateOf<UiPaymentRecord?>(null) }
+    var editPaymentMonthlyRent by remember { mutableStateOf("") }
     var showReceiptDialog by remember { mutableStateOf(false) }
     var receiptPaymentId by remember { mutableStateOf<String?>(null) }
     var receiptPayee by remember { mutableStateOf(defaultPayee) }
     var receiptMethod by remember { mutableStateOf("\u5fae\u4fe1") }
     var receiptDate by remember { mutableStateOf(LocalDate.now()) }
     var showPaymentSuccessDialog by remember { mutableStateOf(false) }
+    var editPropertyName by remember { mutableStateOf(rental.propertyName) }
     var editName by remember { mutableStateOf("") }
     var editPhone by remember { mutableStateOf("") }
     var editIdCard by remember { mutableStateOf("") }
+    var editContractDate by remember { mutableStateOf(rental.contractDate) }
+    var editRentStartDate by remember { mutableStateOf(rental.rentStartDate) }
     var editMonthlyRent by remember { mutableStateOf("") }
     var editPropertyFee by remember { mutableStateOf("") }
     var editDepositAmount by remember { mutableStateOf("") }
     var editDepositStatus by remember { mutableStateOf("\u672a\u652f\u4ed8") }
+    var editLeaseMonths by remember { mutableStateOf(rental.leaseMonths.toString()) }
+    var editPaymentFrequency by remember { mutableStateOf(rental.paymentFrequency) }
+    var editRemark by remember { mutableStateOf(rental.remark) }
+    var editReminderDaysBeforeDue by remember { mutableStateOf(rental.reminderDaysBeforeDue.toString()) }
+    var showRenewDialog by remember { mutableStateOf(false) }
+    var renewTenantName by remember { mutableStateOf(rental.tenantName) }
+    var renewTenantPhone by remember { mutableStateOf(rental.tenantPhone) }
+    var renewTenantIdCard by remember { mutableStateOf(rental.tenantIdCard) }
+    var renewContractDate by remember { mutableStateOf(LocalDate.now()) }
+    var renewRentStartDate by remember { mutableStateOf(rental.rentEndDate.plusDays(1)) }
+    var renewMonthlyRent by remember { mutableStateOf(rental.monthlyRent.toString()) }
+    var renewPropertyFee by remember { mutableStateOf(rental.propertyFee.toString()) }
+    var renewDepositAmount by remember { mutableStateOf(rental.depositAmount.toString()) }
+    var renewDepositStatus by remember { mutableStateOf(rental.depositStatus) }
+    var renewLeaseMonths by remember { mutableStateOf(rental.leaseMonths.toString()) }
+    var renewPaymentFrequency by remember { mutableStateOf(rental.paymentFrequency) }
+    var renewRemark by remember { mutableStateOf(rental.remark) }
+    var renewReminderDaysBeforeDue by remember { mutableStateOf(rental.reminderDaysBeforeDue.toString()) }
+    var showRenewSuccessDialog by remember { mutableStateOf(false) }
     var showUpdateSuccessDialog by remember { mutableStateOf(false) }
+    val editablePropertyOptions = remember(viewModel.availableProperties, rental.propertyName) {
+        (viewModel.availableProperties + rental.propertyName).distinct().sorted()
+    }
+    val editLeaseMonthsValue = editLeaseMonths.toIntOrNull()
+    val editRentEndDate = editLeaseMonthsValue?.let { editRentStartDate.plusMonths(it.toLong()).minusDays(1) }
+    val renewLeaseMonthsValue = renewLeaseMonths.toIntOrNull()
+    val renewRentEndDate = renewLeaseMonthsValue?.let { renewRentStartDate.plusMonths(it.toLong()).minusDays(1) }
+    val today = LocalDate.now()
+    val isPendingEffective = !rental.isCompleted && rental.rentStartDate.isAfter(today)
+    val hasOtherUnfinishedContract = viewModel.rentals.any {
+        it.propertyName == rental.propertyName && !it.isCompleted && it.id != rental.id
+    }
+    val canRenew = !isPendingEffective && !hasOtherUnfinishedContract
+
+    LaunchedEffect(autoOpenRenewDialog, canRenew, rental.id) {
+        if (autoOpenRenewDialog) {
+            if (canRenew) {
+                renewTenantName = rental.tenantName
+                renewTenantPhone = rental.tenantPhone
+                renewTenantIdCard = rental.tenantIdCard
+                renewContractDate = LocalDate.now()
+                renewRentStartDate = rental.rentEndDate.plusDays(1)
+                renewMonthlyRent = rental.monthlyRent.toString()
+                renewPropertyFee = rental.propertyFee.toString()
+                renewDepositAmount = rental.depositAmount.toString()
+                renewDepositStatus = rental.depositStatus
+                renewLeaseMonths = rental.leaseMonths.toString()
+                renewPaymentFrequency = rental.paymentFrequency
+                renewRemark = rental.remark
+                renewReminderDaysBeforeDue = rental.reminderDaysBeforeDue.toString()
+                showRenewDialog = true
+            }
+            onAutoOpenRenewHandled()
+        }
+    }
 
     val pullRefreshState = rememberPullRefreshState(
         refreshing = viewModel.isRefreshing,
@@ -178,31 +255,109 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
-                            TextButton(onClick = {
-                                editName = rental.tenantName
-                                editPhone = rental.tenantPhone
-                                editIdCard = rental.tenantIdCard
-                                editMonthlyRent = rental.monthlyRent.toString()
-                                editPropertyFee = rental.propertyFee.toString()
-                                editDepositAmount = rental.depositAmount.toString()
-                                editDepositStatus = rental.depositStatus
-                                showEditDialog = true
-                            }) {
-                                Text("\u4fee\u6539\u4fe1\u606f")
-                            }
                         }
                         HorizontalDivider()
-                        DetailRow("\u79df\u5ba2", "${rental.tenantName} (${rental.tenantPhone})")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    editPropertyName = rental.propertyName
+                                    editName = rental.tenantName
+                                    editPhone = rental.tenantPhone
+                                    editIdCard = rental.tenantIdCard
+                                    editContractDate = rental.contractDate
+                                    editRentStartDate = rental.rentStartDate
+                                    editMonthlyRent = rental.monthlyRent.toString()
+                                    editPropertyFee = rental.propertyFee.toString()
+                                    editDepositAmount = rental.depositAmount.toString()
+                                    editDepositStatus = rental.depositStatus
+                                    editLeaseMonths = rental.leaseMonths.toString()
+                                    editPaymentFrequency = rental.paymentFrequency
+                                    editRemark = rental.remark
+                                    editReminderDaysBeforeDue = rental.reminderDaysBeforeDue.toString()
+                                    showEditDialog = true
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 6.dp)
+                                )
+                                Text("\u4fee\u6539\u4fe1\u606f")
+                            }
+                            if (!isPendingEffective) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    OutlinedButton(
+                                        enabled = canRenew,
+                                        onClick = {
+                                            renewTenantName = rental.tenantName
+                                            renewTenantPhone = rental.tenantPhone
+                                            renewTenantIdCard = rental.tenantIdCard
+                                            renewContractDate = LocalDate.now()
+                                            renewRentStartDate = rental.rentEndDate.plusDays(1)
+                                            renewMonthlyRent = rental.monthlyRent.toString()
+                                            renewPropertyFee = rental.propertyFee.toString()
+                                            renewDepositAmount = rental.depositAmount.toString()
+                                            renewDepositStatus = rental.depositStatus
+                                            renewLeaseMonths = rental.leaseMonths.toString()
+                                            renewPaymentFrequency = rental.paymentFrequency
+                                            renewRemark = rental.remark
+                                            renewReminderDaysBeforeDue = rental.reminderDaysBeforeDue.toString()
+                                            showRenewDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(52.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = null,
+                                            modifier = Modifier.padding(end = 6.dp)
+                                        )
+                                        Text("\u7eed\u79df")
+                                    }
+                                    if (!canRenew) {
+                                        Text(
+                                            text = "\u8be5\u623f\u6e90\u5df2\u7eed\u79df\uff0c\u8bf7\u81f3\u5f85\u751f\u6548\u5408\u540c\u4e2d\u67e5\u770b",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        DetailRow("\u79df\u5ba2", rental.tenantName)
+                        DetailRow("\u7535\u8bdd", rental.tenantPhone)
                         if (rental.tenantIdCard.isNotBlank()) {
                             DetailRow("\u8bc1\u4ef6\u53f7\u7801", rental.tenantIdCard)
                         }
                         DetailRow("\u5408\u540c\u7b7e\u8ba2\u65e5", rental.contractDate.toString())
                         DetailRow("\u79df\u91d1\u8d77\u59cb\u65e5", rental.rentStartDate.toString())
+                        DetailRow("\u79df\u91d1\u5230\u671f\u65e5", rental.rentEndDate.toString())
                         DetailRow("\u521d\u59cb\u6708\u79df\u91d1", "\u00a5${rental.monthlyRent}")
                         DetailRow("\u6bcf\u6708\u7269\u4e1a\u8d39", "\u00a5${rental.propertyFee}")
                         DetailRow("\u62bc\u91d1", "\u00a5${rental.depositAmount}")
                         DetailRow("\u62bc\u91d1\u72b6\u6001", rental.depositStatus)
-                        DetailRow("\u5468\u671f", "${rental.leaseMonths}\u4e2a\u6708\uff08\u6bcf${rental.paymentFrequency}\u4e2a\u6708\u4e00\u4ed8\uff09")
+                        DetailRow("\u79df\u671f", "${rental.leaseMonths}\u4e2a\u6708\uff08\u6bcf${rental.paymentFrequency}\u4e2a\u6708\u4e00\u4ed8\uff09")
+                        DetailRow("\u50ac\u6536\u63d0\u524d", "${rental.reminderDaysBeforeDue}\u5929")
+                        if (rental.remark.isNotBlank()) {
+                            DetailRow("\u5907\u6ce8", rental.remark)
+                        }
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         DetailRow("\u521b\u5efa\u4eba", rental.createdBy.ifBlank { "unknown" })
                         DetailRow("\u521b\u5efa\u65f6\u95f4", rental.createdAt.formatOrDash())
@@ -218,6 +373,7 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                         payment = payment,
                         propertyName = rental.propertyName,
                         tenantName = rental.tenantName,
+                        tenantPhone = rental.tenantPhone,
                         onReceiptClick = {
                             receiptPaymentId = payment.id
                             receiptPayee = payeeOptions.firstOrNull { payee -> payee == DEFAULT_PAYEE_NAME }
@@ -228,7 +384,8 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                         onRevokeClick = { viewModel.revokePayment(rental.id, payment.id) },
                         onEditAmountClick = {
                             editingPaymentId = payment.id
-                            newAmountInput = payment.amount.toString()
+                            editingPayment = payment
+                            editPaymentMonthlyRent = payment.monthlyRentSnapshot.toString()
                             showEditAmountDialog = true
                         }
                     )
@@ -299,20 +456,25 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
     }
 
     if (showEditAmountDialog && editingPaymentId != null) {
+        val payment = editingPayment
+        val editedMonthlyRentValue = editPaymentMonthlyRent.toIntOrNull() ?: 0
+        val editedTotalAmount = payment?.let {
+            editedMonthlyRentValue * it.monthsInPeriod + it.propertyFeeAmount
+        } ?: 0
         AlertDialog(
             onDismissRequest = { showEditAmountDialog = false },
             title = { Text("\u4fee\u6539\u6536\u6b3e\u91d1\u989d") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "\u4ec5\u4fee\u6539\u5f53\u524d\u671f\u8d26\u5355\u91d1\u989d\uff0c\u4e0d\u5f71\u54cd\u5176\u4ed6\u671f\u6570\u3002",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    payment?.let {
+                        Text("\u672c\u671f\u6708\u79df\u91d1\uff1a\u00a5${it.monthlyRentSnapshot}")
+                        Text("\u672c\u671f\u79df\u671f\uff1a${it.monthsInPeriod}\u4e2a\u6708")
+                        Text("\u672c\u671f\u603b\u91d1\u989d\uff1a\u00a5$editedTotalAmount")
+                    }
                     OutlinedTextField(
-                        value = newAmountInput,
-                        onValueChange = { newAmountInput = it },
-                        label = { Text("\u65b0\u91d1\u989d") },
+                        value = editPaymentMonthlyRent,
+                        onValueChange = { editPaymentMonthlyRent = it },
+                        label = { Text("\u65b0\u7684\u6708\u79df\u91d1") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -320,7 +482,7 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             },
             confirmButton = {
                 Button(onClick = {
-                    newAmountInput.toIntOrNull()?.let {
+                    editPaymentMonthlyRent.toIntOrNull()?.let {
                         if (it >= 0) {
                             viewModel.updatePaymentAmount(rental.id, editingPaymentId!!, it)
                             showEditAmountDialog = false
@@ -343,7 +505,16 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             onDismissRequest = { showEditDialog = false },
             title = { Text("\u4fee\u6539\u5408\u540c\u4fe1\u606f") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SingleChoiceDialogField(
+                        label = "\u9009\u62e9\u623f\u6e90",
+                        options = editablePropertyOptions,
+                        selectedOption = editPropertyName,
+                        onOptionSelected = { editPropertyName = it }
+                    )
                     OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("\u59d3\u540d") })
                     OutlinedTextField(
                         value = editPhone,
@@ -355,6 +526,16 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                         value = editIdCard,
                         onValueChange = { editIdCard = it },
                         label = { Text("\u8bc1\u4ef6\u53f7\u7801\uff08\u9009\u586b\uff09") }
+                    )
+                    NativeDatePickerField(
+                        label = "\u5408\u540c\u7b7e\u8ba2\u65e5\u671f",
+                        selectedDate = editContractDate,
+                        onDateSelected = { editContractDate = it }
+                    )
+                    NativeDatePickerField(
+                        label = "\u79df\u91d1\u8d77\u59cb\u65e5",
+                        selectedDate = editRentStartDate,
+                        onDateSelected = { editRentStartDate = it }
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
@@ -388,6 +569,48 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                             modifier = Modifier.weight(1f)
                         )
                     }
+                    OutlinedTextField(
+                        value = editLeaseMonths,
+                        onValueChange = { editLeaseMonths = it },
+                        label = { Text("\u79df\u671f(\u6708)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editRentEndDate?.toString().orEmpty(),
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false,
+                        label = { Text("\u79df\u91d1\u5230\u671f\u65e5") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                    SingleChoiceDialogField(
+                        label = "\u4ea4\u79df\u65b9\u5f0f",
+                        options = PAYMENT_OPTIONS.map { it.second },
+                        selectedOption = PAYMENT_OPTIONS.firstOrNull { it.first == editPaymentFrequency }?.second
+                            ?: PAYMENT_OPTIONS.first().second,
+                        onOptionSelected = { selected ->
+                            editPaymentFrequency = PAYMENT_OPTIONS.first { it.second == selected }.first
+                        }
+                    )
+                    OutlinedTextField(
+                        value = editReminderDaysBeforeDue,
+                        onValueChange = { editReminderDaysBeforeDue = it },
+                        label = { Text("\u50ac\u6536\u63d0\u524d\u5929\u6570") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editRemark,
+                        onValueChange = { editRemark = it },
+                        label = { Text("\u5907\u6ce8\uff08\u9009\u586b\uff09") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             },
             confirmButton = {
@@ -395,25 +618,41 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
                     val monthlyRent = editMonthlyRent.toIntOrNull()
                     val propertyFee = editPropertyFee.toIntOrNull()
                     val depositAmount = editDepositAmount.toIntOrNull()
+                    val leaseMonths = editLeaseMonths.toIntOrNull()
+                    val reminderDaysBeforeDue = editReminderDaysBeforeDue.toIntOrNull()
                     if (
+                        editPropertyName.isNotBlank() &&
                         editName.isNotBlank() &&
                         editPhone.matches(Regex("^\\d{11}$")) &&
                         monthlyRent != null &&
                         propertyFee != null &&
-                        depositAmount != null
+                        depositAmount != null &&
+                        leaseMonths != null &&
+                        reminderDaysBeforeDue != null &&
+                        reminderDaysBeforeDue >= 0
                     ) {
                         viewModel.updateRentalContractInfo(
                             rentalId = rental.id,
+                            newPropertyName = editPropertyName,
                             newName = editName,
                             newPhone = editPhone,
                             newIdCard = editIdCard,
+                            newContractDate = editContractDate,
+                            newRentStartDate = editRentStartDate,
                             newMonthlyRent = monthlyRent,
                             newPropertyFee = propertyFee,
                             newDepositAmount = depositAmount,
                             newDepositStatus = editDepositStatus,
-                            onSuccess = { showUpdateSuccessDialog = true }
+                            newLeaseMonths = leaseMonths,
+                            newPaymentFrequency = editPaymentFrequency,
+                            newRemark = editRemark,
+                            newReminderDaysBeforeDue = reminderDaysBeforeDue,
+                            onSuccess = {
+                                showEditDialog = false
+                                showUpdateSuccessDialog = true
+                            },
+                            onError = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
                         )
-                        showEditDialog = false
                     }
                 }) {
                     Text("\u4fdd\u5b58")
@@ -421,6 +660,184 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             },
             dismissButton = {
                 TextButton(onClick = { showEditDialog = false }) {
+                    Text("\u53d6\u6d88")
+                }
+            }
+        )
+    }
+
+    if (showRenewDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenewDialog = false },
+            title = { Text("\u7eed\u79df") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = rental.propertyName,
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false,
+                        label = { Text("\u623f\u6e90") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                    OutlinedTextField(
+                        value = renewTenantName,
+                        onValueChange = { renewTenantName = it },
+                        label = { Text("\u79df\u5ba2\u59d3\u540d") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = renewTenantPhone,
+                        onValueChange = { renewTenantPhone = it },
+                        label = { Text("\u624b\u673a\u53f7") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = renewTenantIdCard,
+                        onValueChange = { renewTenantIdCard = it },
+                        label = { Text("\u8bc1\u4ef6\u53f7\u7801\uff08\u9009\u586b\uff09") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    NativeDatePickerField(
+                        label = "\u65b0\u5408\u540c\u7b7e\u8ba2\u65e5\u671f",
+                        selectedDate = renewContractDate,
+                        onDateSelected = { renewContractDate = it }
+                    )
+                    NativeDatePickerField(
+                        label = "\u65b0\u79df\u91d1\u8d77\u59cb\u65e5",
+                        selectedDate = renewRentStartDate,
+                        onDateSelected = { renewRentStartDate = it }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = renewMonthlyRent,
+                            onValueChange = { renewMonthlyRent = it },
+                            label = { Text("\u6708\u79df\u91d1(\u5143)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = renewPropertyFee,
+                            onValueChange = { renewPropertyFee = it },
+                            label = { Text("\u7269\u4e1a\u8d39(\u5143)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = renewDepositAmount,
+                            onValueChange = { renewDepositAmount = it },
+                            label = { Text("\u62bc\u91d1(\u5143)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        SingleChoiceDialogField(
+                            label = "\u62bc\u91d1\u72b6\u6001",
+                            options = DEPOSIT_STATUS_OPTIONS,
+                            selectedOption = renewDepositStatus,
+                            onOptionSelected = { renewDepositStatus = it },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = renewLeaseMonths,
+                        onValueChange = { renewLeaseMonths = it },
+                        label = { Text("\u79df\u671f(\u6708)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = renewRentEndDate?.toString().orEmpty(),
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false,
+                        label = { Text("\u79df\u91d1\u5230\u671f\u65e5") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                    SingleChoiceDialogField(
+                        label = "\u4ea4\u79df\u65b9\u5f0f",
+                        options = PAYMENT_OPTIONS.map { it.second },
+                        selectedOption = PAYMENT_OPTIONS.firstOrNull { it.first == renewPaymentFrequency }?.second
+                            ?: PAYMENT_OPTIONS.first().second,
+                        onOptionSelected = { selected ->
+                            renewPaymentFrequency = PAYMENT_OPTIONS.first { it.second == selected }.first
+                        }
+                    )
+                    OutlinedTextField(
+                        value = renewReminderDaysBeforeDue,
+                        onValueChange = { renewReminderDaysBeforeDue = it },
+                        label = { Text("\u50ac\u6536\u63d0\u524d\u5929\u6570") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = renewRemark,
+                        onValueChange = { renewRemark = it },
+                        label = { Text("\u5907\u6ce8\uff08\u9009\u586b\uff09") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val monthlyRent = renewMonthlyRent.toIntOrNull()
+                    val propertyFee = renewPropertyFee.toIntOrNull()
+                    val depositAmount = renewDepositAmount.toIntOrNull()
+                    val leaseMonths = renewLeaseMonths.toIntOrNull()
+                    val reminderDays = renewReminderDaysBeforeDue.toIntOrNull()
+                    if (
+                        renewTenantName.isNotBlank() &&
+                        renewTenantPhone.matches(Regex("^\\d{11}$")) &&
+                        monthlyRent != null &&
+                        propertyFee != null &&
+                        depositAmount != null &&
+                        leaseMonths != null &&
+                        reminderDays != null &&
+                        reminderDays >= 0
+                    ) {
+                        viewModel.addRental(
+                            propertyName = rental.propertyName,
+                            tenantName = renewTenantName,
+                            tenantPhone = renewTenantPhone,
+                            tenantIdCard = renewTenantIdCard,
+                            contractDate = renewContractDate,
+                            rentStartDate = renewRentStartDate,
+                            monthlyRent = monthlyRent,
+                            propertyFee = propertyFee,
+                            depositAmount = depositAmount,
+                            depositStatus = renewDepositStatus,
+                            leaseMonths = leaseMonths,
+                            paymentFrequency = renewPaymentFrequency,
+                            remark = renewRemark,
+                            reminderDaysBeforeDue = reminderDays,
+                            onSuccess = {
+                                showRenewDialog = false
+                                showRenewSuccessDialog = true
+                            },
+                            onError = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                        )
+                    }
+                }) {
+                    Text("\u786e\u8ba4\u7eed\u79df")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenewDialog = false }) {
                     Text("\u53d6\u6d88")
                 }
             }
@@ -477,6 +894,19 @@ fun RentalDetailScreen(rental: UiRental, viewModel: RentalViewModel, onBackClick
             }
         )
     }
+
+    if (showRenewSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenewSuccessDialog = false },
+            title = { Text("\u63d0\u793a") },
+            text = { Text("\u7eed\u79df\u5408\u540c\u5df2\u521b\u5efa") },
+            confirmButton = {
+                TextButton(onClick = { showRenewSuccessDialog = false }) {
+                    Text("\u786e\u5b9a")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -484,12 +914,12 @@ fun PaymentRecordCard(
     payment: UiPaymentRecord,
     propertyName: String,
     tenantName: String,
+    tenantPhone: String,
     onReceiptClick: () -> Unit,
     onRevokeClick: () -> Unit,
     onEditAmountClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
     val containerColor = if (payment.isPaid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -516,6 +946,7 @@ fun PaymentRecordCard(
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             DetailRow("\u79df\u671f", "${payment.periodStartDate} \u81f3 ${payment.periodEndDate}")
             DetailRow("\u5e94\u6536\u91d1\u989d", "\u00a5${payment.amount}", isHighlight = !payment.isPaid, showEditIcon = !payment.isPaid, onEditClick = onEditAmountClick)
+            DetailRow("\u672c\u671f\u6708\u79df\u91d1", "\u00a5${payment.monthlyRentSnapshot}")
             DetailRow("\u79df\u91d1", "\u00a5${payment.rentAmount}")
             if (payment.propertyFeeAmount > 0) {
                 DetailRow("\u7269\u4e1a\u8d39", "\u00a5${payment.propertyFeeAmount}")
@@ -533,23 +964,51 @@ fun PaymentRecordCard(
                 )
             }
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (!payment.isPaid) {
-                    OutlinedButton(
-                        onClick = {
-                            val msg = buildCollectionReminderMessage(tenantName, propertyName, payment)
-                            clipboardManager.setText(AnnotatedString(msg))
-                            Toast.makeText(context, "\u50ac\u6536\u77ed\u4fe1\u5df2\u590d\u5236", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.padding(end = 8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("\u590d\u5236\u50ac\u6536\u77ed\u4fe1")
+                        OutlinedButton(
+                            onClick = {
+                                val msg = buildSmsReminderMessage(tenantName, propertyName, payment)
+                                if (!launchSmsComposer(context, tenantPhone, msg)) {
+                                    Toast.makeText(context, "\u672a\u627e\u5230\u53ef\u53d1\u9001\u77ed\u4fe1\u7684\u5e94\u7528", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sms,
+                                contentDescription = "\u53d1\u9001\u77ed\u4fe1",
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                            Text("\u53d1\u9001\u77ed\u4fe1")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                if (!launchDialer(context, tenantPhone)) {
+                                    Toast.makeText(context, "\u672a\u627e\u5230\u53ef\u62e8\u6253\u7535\u8bdd\u7684\u5e94\u7528", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = "\u62e8\u6253\u7535\u8bdd",
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                            Text("\u62e8\u6253\u7535\u8bdd")
+                        }
                     }
-                    Button(onClick = onReceiptClick) {
+                    Button(
+                        onClick = onReceiptClick,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("\u786e\u8ba4\u6536\u6b3e")
                     }
                 } else {
@@ -604,6 +1063,60 @@ private fun LocalDateTime?.formatOrDash(): String {
     return this?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) ?: "-"
 }
 
+private fun buildSmsReminderMessage(
+    tenantName: String,
+    propertyName: String,
+    payment: UiPaymentRecord
+): String {
+    val propertyFeeText = if (payment.propertyFeeAmount > 0) {
+        "\uff0c\u5176\u4e2d\u7269\u4e1a\u8d39${payment.propertyFeeAmount}\u5143"
+    } else {
+        ""
+    }
+    return "\u4f60\u597d\uff0c$tenantName\u3002[$propertyName] ${payment.periodStartDate} \u81f3 ${payment.periodEndDate} \u7684\u7b2c${payment.periodNumber}\u671f\u79df\u91d1\u5e94\u7f34${payment.amount}\u5143$propertyFeeText\uff0c\u5c06\u4e8e${payment.dueDate}\u5230\u671f\uff0c\u8bf7\u53ca\u65f6\u7f34\u7eb3\uff0c\u8c22\u8c22\u3002"
+}
+
+private fun launchSmsComposer(
+    context: android.content.Context,
+    phone: String,
+    message: String
+): Boolean {
+    val intents = listOf(
+        Intent(Intent.ACTION_SENDTO).apply {
+            data = Uri.parse("smsto:$phone")
+            putExtra("sms_body", message)
+        },
+        Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse("sms:$phone")
+            putExtra("sms_body", message)
+        }
+    )
+    return intents.any { intent ->
+        try {
+            context.startActivity(intent)
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        }
+    }
+}
+
+private fun launchDialer(
+    context: android.content.Context,
+    phone: String
+): Boolean {
+    return try {
+        context.startActivity(
+            Intent(Intent.ACTION_DIAL).apply {
+                data = Uri.parse("tel:$phone")
+            }
+        )
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+}
+
 private fun buildCollectionReminderMessage(
     tenantName: String,
     propertyName: String,
@@ -622,9 +1135,10 @@ fun CollectionPaymentCard(
     item: UiCollectionItem,
     onReceiptClick: () -> Unit,
     onRevokeClick: () -> Unit,
-    onCopySuccess: () -> Unit
+    onSmsUnavailable: () -> Unit,
+    onDialUnavailable: () -> Unit
 ) {
-    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
     val payment = item.payment
     val containerColor = if (payment.isPaid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     Card(
@@ -650,8 +1164,10 @@ fun CollectionPaymentCard(
                 }
             }
             DetailRow("\u79df\u5ba2", item.tenantName)
+            DetailRow("\u7535\u8bdd", item.tenantPhone)
             DetailRow("\u79df\u671f", "${payment.periodStartDate} \u81f3 ${payment.periodEndDate}")
             DetailRow("\u5e94\u6536\u91d1\u989d", "\u00a5${payment.amount}", isHighlight = !payment.isPaid)
+            DetailRow("\u672c\u671f\u6708\u79df\u91d1", "\u00a5${payment.monthlyRentSnapshot}")
             DetailRow("\u79df\u91d1", "\u00a5${payment.rentAmount}")
             if (payment.propertyFeeAmount > 0) {
                 DetailRow("\u7269\u4e1a\u8d39", "\u00a5${payment.propertyFeeAmount}")
@@ -659,23 +1175,51 @@ fun CollectionPaymentCard(
             DetailRow("\u5e94\u7f34\u65e5\u671f", payment.dueDate.toString())
             DetailRow("\u63d0\u9192\u65e5\u671f", payment.reminderDate.toString(), color = MaterialTheme.colorScheme.error)
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (!payment.isPaid) {
-                    OutlinedButton(
-                        onClick = {
-                            val msg = buildCollectionReminderMessage(item.tenantName, item.propertyName, payment)
-                            clipboardManager.setText(AnnotatedString(msg))
-                            onCopySuccess()
-                        },
-                        modifier = Modifier.padding(end = 8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("\u590d\u5236\u50ac\u6536\u77ed\u4fe1")
+                        OutlinedButton(
+                            onClick = {
+                                val msg = buildSmsReminderMessage(item.tenantName, item.propertyName, payment)
+                                if (!launchSmsComposer(context, item.tenantPhone, msg)) {
+                                    onSmsUnavailable()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sms,
+                                contentDescription = "\u53d1\u9001\u77ed\u4fe1",
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                            Text("\u53d1\u9001\u77ed\u4fe1")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                if (!launchDialer(context, item.tenantPhone)) {
+                                    onDialUnavailable()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = "\u62e8\u6253\u7535\u8bdd",
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                            Text("\u62e8\u6253\u7535\u8bdd")
+                        }
                     }
-                    Button(onClick = onReceiptClick) {
+                    Button(
+                        onClick = onReceiptClick,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("\u786e\u8ba4\u6536\u6b3e")
                     }
                 } else {

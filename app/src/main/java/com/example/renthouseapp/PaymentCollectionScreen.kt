@@ -44,6 +44,7 @@ data class UiCollectionItem(
     val rentalId: String,
     val propertyName: String,
     val tenantName: String,
+    val tenantPhone: String,
     val payment: UiPaymentRecord
 )
 
@@ -78,6 +79,7 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
                         rentalId = rental.id,
                         propertyName = rental.propertyName,
                         tenantName = rental.tenantName,
+                        tenantPhone = rental.tenantPhone,
                         payment = payment
                     )
                 }
@@ -93,6 +95,7 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
                         rentalId = rental.id,
                         propertyName = rental.propertyName,
                         tenantName = rental.tenantName,
+                        tenantPhone = rental.tenantPhone,
                         payment = payment
                     )
                 }
@@ -160,8 +163,11 @@ fun PaymentCollectionScreen(viewModel: RentalViewModel) {
                                     showReceiptDialog = true
                                 },
                                 onRevokeClick = { viewModel.revokePayment(item.rentalId, item.payment.id) },
-                                onCopySuccess = {
-                                    Toast.makeText(context, "\u50ac\u6536\u77ed\u4fe1\u5df2\u590d\u5236", Toast.LENGTH_SHORT).show()
+                                onSmsUnavailable = {
+                                    Toast.makeText(context, "未找到可发送短信的应用", Toast.LENGTH_SHORT).show()
+                                },
+                                onDialUnavailable = {
+                                    Toast.makeText(context, "未找到可拨打电话的应用", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }

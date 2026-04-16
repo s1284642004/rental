@@ -1,6 +1,7 @@
 package com.example.renthouseapp
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +59,7 @@ fun RentHouseAppApp() {
     if (currentLoginUser == null) {
         PasscodeScreen(
             isLoading = rentalViewModel.isLoggingIn,
+            isMigrating = rentalViewModel.isMigratingData,
             verifiedLoginName = rentalViewModel.verifiedLoginName,
             validationMessage = rentalViewModel.loginValidationMessage,
             onVerifyCredentials = { loginCode, password ->
@@ -69,6 +72,16 @@ fun RentHouseAppApp() {
                     onSuccess = {},
                     onError = {}
                 )
+            },
+            onMigrateDatabase = {
+                rentalViewModel.cleanupDanglingPaymentRecords(
+                    onSuccess = { message ->
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    },
+                    onError = { message ->
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                )
             }
         )
         return
@@ -76,6 +89,7 @@ fun RentHouseAppApp() {
 
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.LIST) }
     var selectedRentalId by remember { mutableStateOf<String?>(null) }
+    var autoOpenRenewRentalId by remember { mutableStateOf<String?>(null) }
     val selectedRental = rentalViewModel.rentals.find { it.id == selectedRentalId }
 
     LaunchedEffect(currentDestination) {
@@ -94,7 +108,12 @@ fun RentHouseAppApp() {
         RentalDetailScreen(
             rental = selectedRental,
             viewModel = rentalViewModel,
-            onBackClick = { selectedRentalId = null }
+            onBackClick = {
+                selectedRentalId = null
+                autoOpenRenewRentalId = null
+            },
+            autoOpenRenewDialog = autoOpenRenewRentalId == selectedRental.id,
+            onAutoOpenRenewHandled = { autoOpenRenewRentalId = null }
         )
     } else {
         NavigationSuiteScaffold(
@@ -133,6 +152,14 @@ fun RentHouseAppApp() {
                         AppDestinations.PAYMENT -> PaymentCollectionScreen(
                             viewModel = rentalViewModel
                         )
+                        AppDestinations.RENEWAL -> RenewalScheduleScreen(
+                            viewModel = rentalViewModel,
+                            onRentalClick = { clickedRental -> selectedRentalId = clickedRental.id },
+                            onRenewClick = { clickedRental ->
+                                selectedRentalId = clickedRental.id
+                                autoOpenRenewRentalId = clickedRental.id
+                            }
+                        )
                     }
                 }
             }
@@ -143,5 +170,6 @@ fun RentHouseAppApp() {
 enum class AppDestinations(val label: String, val icon: ImageVector) {
     ENTRY("\u5f55\u5165", Icons.Default.Add),
     LIST("\u623f\u6e90", Icons.Default.Home),
-    PAYMENT("\u6536\u6b3e", Icons.Default.DateRange)
+    PAYMENT("\u50ac\u6b3e\u65e5\u7a0b", Icons.Default.DateRange),
+    RENEWAL("\u62db\u79df/\u7eed\u79df", Icons.Default.Campaign)
 }

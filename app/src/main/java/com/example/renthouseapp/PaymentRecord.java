@@ -14,7 +14,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType PaymentRecord.
  *
- * @since 2026-04-12
+ * @since 2026-04-16
  */
 @PrimaryKeys({"id"})
 public final class PaymentRecord extends CloudDBZoneObject {
@@ -54,6 +54,12 @@ public final class PaymentRecord extends CloudDBZoneObject {
     private Integer rentAmount;
 
     private Integer propertyFeeAmount;
+
+    private Integer monthlyRentSnapshot;
+
+    private String remark;
+
+    private Integer monthsInPeriod;
 
     public PaymentRecord() {
         super(PaymentRecord.class);
@@ -202,6 +208,30 @@ public final class PaymentRecord extends CloudDBZoneObject {
 
     public Integer getPropertyFeeAmount() {
         return propertyFeeAmount;
+    }
+
+    public void setMonthlyRentSnapshot(Integer monthlyRentSnapshot) {
+        this.monthlyRentSnapshot = monthlyRentSnapshot;
+    }
+
+    public Integer getMonthlyRentSnapshot() {
+        return monthlyRentSnapshot;
+    }
+
+    public void setRemark(String remark) {
+        this.remark = remark;
+    }
+
+    public String getRemark() {
+        return remark;
+    }
+
+    public void setMonthsInPeriod(Integer monthsInPeriod) {
+        this.monthsInPeriod = monthsInPeriod;
+    }
+
+    public Integer getMonthsInPeriod() {
+        return monthsInPeriod;
     }
 
 }

@@ -38,10 +38,12 @@ import kotlinx.coroutines.delay
 @Composable
 fun PasscodeScreen(
     isLoading: Boolean,
+    isMigrating: Boolean,
     verifiedLoginName: String?,
     validationMessage: String?,
     onVerifyCredentials: (String, String) -> Unit,
-    onLogin: (String, String) -> Unit
+    onLogin: (String, String) -> Unit,
+    onMigrateDatabase: () -> Unit
 ) {
     var loginCode by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -180,6 +182,7 @@ fun PasscodeScreen(
                     Text("\u767b\u5f55")
                 }
             }
+
         }
     }
 }

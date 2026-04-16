@@ -13,7 +13,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType LoginUser.
  *
- * @since 2026-04-12
+ * @since 2026-04-16
  */
 @PrimaryKeys({"id"})
 public final class LoginUser extends CloudDBZoneObject {

@@ -15,7 +15,7 @@ import java.util.Date;
 /**
  * Definition of ObjectType RentalRecord.
  *
- * @since 2026-04-12
+ * @since 2026-04-16
  */
 @PrimaryKeys({"id"})
 public final class RentalRecord extends CloudDBZoneObject {
@@ -61,11 +61,19 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     private Integer propertyFee;
 
+    private String remark;
+
+    private Date rentEndDate;
+
+    @DefaultValue(intValue = 15)
+    private Integer reminderDaysBeforeDue;
+
     public RentalRecord() {
         super(RentalRecord.class);
         this.tenantPhone = "";
         this.isCompleted = false;
         this.depositStatus = "未支付";
+        this.reminderDaysBeforeDue = 15;
     }
 
     public void setId(String id) {
@@ -218,6 +226,30 @@ public final class RentalRecord extends CloudDBZoneObject {
 
     public Integer getPropertyFee() {
         return propertyFee;
+    }
+
+    public void setRemark(String remark) {
+        this.remark = remark;
+    }
+
+    public String getRemark() {
+        return remark;
+    }
+
+    public void setRentEndDate(Date rentEndDate) {
+        this.rentEndDate = rentEndDate;
+    }
+
+    public Date getRentEndDate() {
+        return rentEndDate;
+    }
+
+    public void setReminderDaysBeforeDue(Integer reminderDaysBeforeDue) {
+        this.reminderDaysBeforeDue = reminderDaysBeforeDue;
+    }
+
+    public Integer getReminderDaysBeforeDue() {
+        return reminderDaysBeforeDue;
     }
 
 }

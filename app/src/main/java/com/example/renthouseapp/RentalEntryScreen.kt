@@ -68,10 +68,14 @@ fun RentalEntryScreen(
     val depositAmount = draft.depositAmount
     val depositStatus = draft.depositStatus
     val leaseMonths = draft.leaseMonths
+    val remark = draft.remark
+    val reminderDaysBeforeDue = draft.reminderDaysBeforeDue
     val rentStartDateText = draft.rentStartDateText.ifBlank { LocalDate.now().toString() }
     val contractDateText = draft.contractDateText.ifBlank { LocalDate.now().toString() }
     val rentStartDate = LocalDate.parse(rentStartDateText)
     val contractDate = LocalDate.parse(contractDateText)
+    val leaseMonthValue = leaseMonths.toIntOrNull()
+    val rentEndDate = leaseMonthValue?.let { rentStartDate.plusMonths(it.toLong()).minusDays(1) }
 
     val paymentOptions = listOf(
         1 to "\u6bcf\u6708\u4e00\u4ed8",
@@ -190,14 +194,6 @@ fun RentalEntryScreen(
                     )
                 }
 
-                OutlinedTextField(
-                    value = leaseMonths,
-                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(leaseMonths = it) } },
-                    label = { Text("\u5468\u671f(\u6708) *") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = depositAmount,
@@ -217,6 +213,14 @@ fun RentalEntryScreen(
                     )
                 }
 
+                OutlinedTextField(
+                    value = leaseMonths,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(leaseMonths = it) } },
+                    label = { Text("\u79df\u671f(\u6708) *") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
                 NativeDatePickerField(
                     label = "\u5408\u540c\u7b7e\u8ba2\u65e5\u671f *",
                     selectedDate = contractDate,
@@ -231,6 +235,19 @@ fun RentalEntryScreen(
                         viewModel.updateEntryFormDraft { draftState -> draftState.copy(rentStartDateText = selectedDate.toString()) }
                     }
                 )
+                OutlinedTextField(
+                    value = rentEndDate?.toString().orEmpty(),
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = false,
+                    label = { Text("\u79df\u91d1\u5230\u671f\u65e5") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
 
                 SingleChoiceDialogField(
                     label = "\u4ea4\u79df\u65b9\u5f0f *",
@@ -243,19 +260,39 @@ fun RentalEntryScreen(
                     }
                 )
 
+                OutlinedTextField(
+                    value = reminderDaysBeforeDue,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(reminderDaysBeforeDue = it) } },
+                    label = { Text("\u50ac\u6536\u63d0\u524d\u5929\u6570") },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                OutlinedTextField(
+                    value = remark,
+                    onValueChange = { viewModel.updateEntryFormDraft { draftState -> draftState.copy(remark = it) } },
+                    label = { Text("\u5907\u6ce8\uff08\u9009\u586b\uff09") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Button(
                     onClick = {
                         val rentInt = monthlyRent.toIntOrNull()
                         val propertyFeeInt = propertyFee.toIntOrNull()
                         val depositInt = depositAmount.toIntOrNull() ?: 0
                         val leaseInt = leaseMonths.toIntOrNull()
+                        val reminderDaysInt = reminderDaysBeforeDue.toIntOrNull()
 
                         if (viewModel.availableProperties.isEmpty()) {
                             errorMessage = viewModel.initError ?: "\u6682\u65e0\u53ef\u7528\u623f\u6e90\uff0c\u8bf7\u5148\u786e\u8ba4 Cloud DB \u521d\u59cb\u5316"
                             return@Button
                         }
-                        if (tenantName.isBlank() || rentInt == null || propertyFeeInt == null || leaseInt == null || propertyName.isBlank()) {
-                            errorMessage = "\u8bf7\u5b8c\u6574\u586b\u5199\u5fc5\u586b\u9879\uff0c\u4e14\u6708\u79df\u91d1\u3001\u7269\u4e1a\u8d39\u3001\u5468\u671f\u5fc5\u987b\u4e3a\u6570\u5b57"
+                        if (tenantName.isBlank() || rentInt == null || propertyFeeInt == null || leaseInt == null || reminderDaysInt == null || propertyName.isBlank()) {
+                            errorMessage = "\u8bf7\u5b8c\u6574\u586b\u5199\u5fc5\u586b\u9879\uff0c\u4e14\u6708\u79df\u91d1\u3001\u7269\u4e1a\u8d39\u3001\u79df\u671f\u5fc5\u987b\u4e3a\u6570\u5b57"
+                            return@Button
+                        }
+                        if (reminderDaysInt < 0) {
+                            errorMessage = "\u50ac\u6536\u63d0\u524d\u5929\u6570\u4e0d\u80fd\u5c0f\u4e8e0"
                             return@Button
                         }
                         if (depositAmount.toIntOrNull() == null && depositAmount.isNotBlank()) {
@@ -288,6 +325,8 @@ fun RentalEntryScreen(
                             depositStatus = depositStatus,
                             leaseMonths = leaseInt,
                             paymentFrequency = selectedFreq.first,
+                            remark = remark,
+                            reminderDaysBeforeDue = reminderDaysInt,
                             onSuccess = { showSuccessDialog = true },
                             onError = { errorMessage = it }
                         )
